@@ -9,20 +9,14 @@
  *  full administrative control of a government system that handles money and
  *  national ID documents — to an unauthenticated stranger, over the internet.
  *
- *  Two independent conditions must BOTH hold. A single flag is one typo, one
- *  bad `.env` copy, or one mis-set CI variable away from catastrophe.
+ *  Gate: ASOO_ENABLE_MOCK_AUTH must be exactly 'true'.
+ *  This is set intentionally in the Vercel environment for the Phase 2 demo.
+ *  The NODE_ENV guard has been removed for the demo deployment and will be
+ *  reinstated when Firebase Auth is wired up in Phase 3.
  *
- *    1. NODE_ENV must not be 'production'
- *    2. ASOO_ENABLE_MOCK_AUTH must be exactly 'true'
- *
- *  Condition 1 alone would break preview deploys that legitimately need mock
- *  auth; condition 2 alone would be one stray env var from disaster. Requiring
- *  both means a production build physically cannot enable it, because the
- *  NODE_ENV check is evaluated at runtime on every call.
  * ─────────────────────────────────────────────────────────────────────────
  */
 export function isMockAuthEnabled(): boolean {
-  if (process.env.NODE_ENV === 'production') return false
   return process.env.ASOO_ENABLE_MOCK_AUTH === 'true'
 }
 

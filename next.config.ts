@@ -1,11 +1,7 @@
 import type { NextConfig } from 'next'
-import path from 'node:path'
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  outputFileTracingRoot: path.join(__dirname),
-  output: 'standalone',
-
 
 
   // See docs/08-security.md §9.

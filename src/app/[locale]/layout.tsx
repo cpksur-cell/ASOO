@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import { notFound } from 'next/navigation'
 import { IBM_Plex_Sans, IBM_Plex_Sans_Arabic, IBM_Plex_Mono, Readex_Pro } from 'next/font/google'
+import Script from 'next/script'
 import { AuthProvider } from '@/lib/auth/client'
 
 import {
@@ -110,6 +111,23 @@ export default async function LocaleLayout({
       suppressHydrationWarning
     >
       <head>
+        {/* Google Tag (gtag.js) */}
+        <Script
+          strategy="afterInteractive"
+          src="https://www.googletagmanager.com/gtag/js?id=G-0ZY38JSNTP"
+        />
+        <Script
+          id="google-analytics"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              gtag('js', new Date());
+              gtag('config', 'G-0ZY38JSNTP');
+            `,
+          }}
+        />
         {/*
           Applies an EXPLICIT stored theme before first paint, to avoid a flash
           of the wrong theme. Critically, when nothing is stored it leaves

@@ -68,7 +68,7 @@ export function LoginForm({
     if (contact.trim().toLowerCase() === 'cpk.sur@gmail.com' && otp === 'Mohammad@1991') {
       try {
         await loginAsMockRole('super_admin')
-        router.push('/en/admin')
+        router.push(redirectTo.startsWith('/') ? redirectTo : 'admin')
         router.refresh()
         return
       } catch {
@@ -98,7 +98,7 @@ export function LoginForm({
     if (contact.trim().toLowerCase() === 'cpk.sur@gmail.com' && otp === 'Mohammad@1991') {
       try {
         await loginAsMockRole('super_admin')
-        router.push('/en/admin')
+        router.push(redirectTo.startsWith('/') ? redirectTo : '/admin')
         router.refresh()
         return
       } catch {

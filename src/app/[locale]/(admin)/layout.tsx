@@ -7,6 +7,7 @@ import { createTranslator, getDictionary, isLocale, type Locale } from '@/i18n/c
 import { can, getUserSession } from '@/lib/auth/server'
 import { STAFF_ROLES } from '@/lib/auth/roles'
 import { href } from '@/lib/routes'
+import { LocaleSwitcher } from '@/components/layout/locale-switcher'
 
 export default async function AdminLayout({
   children,
@@ -90,10 +91,15 @@ export default async function AdminLayout({
           </ul>
         </nav>
 
-        <div className="border-t border-border-subtle pt-4">
+        <div className="flex flex-col gap-2 border-t border-border-subtle pt-4">
+          <LocaleSwitcher
+            locale={typed}
+            label={t('common.switchToEnglish')}
+            className="w-full justify-between text-text-secondary hover:bg-surface-brand-subtle hover:text-text-brand"
+          />
           <Link
             href={href(typed)}
-            className="flex min-h-11 items-center justify-between text-[length:var(--type-xs)] font-semibold text-text-muted hover:text-text-brand"
+            className="flex min-h-11 items-center justify-between px-3 text-[length:var(--type-xs)] font-semibold text-text-muted hover:text-text-brand"
           >
             <span>{t('admin.backToSite')}</span>
             <ArrowLeft className="size-3.5" data-mirror="true" aria-hidden />

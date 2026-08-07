@@ -1,0 +1,51 @@
+{
+  "name": "asoo-portal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ASOO Portal — Syndicate of Surveying Office Owners in Jordan",
+  "scripts": {
+    "predev": "node scripts/build-tokens.mjs",
+    "dev": "next dev",
+    "prebuild": "node scripts/build-tokens.mjs",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "tokens:build": "node scripts/build-tokens.mjs",
+    "tokens:check": "node scripts/build-tokens.mjs --check-only",
+    "audit:tokens": "node scripts/audit-tokens.mjs",
+    "audit:i18n": "node scripts/audit-i18n.mjs",
+    "audit:schema": "node scripts/audit-schema.mjs",
+    "verify": "npm run tokens:build && npm run audit:tokens && npm run audit:i18n && npm run audit:schema && npm run typecheck && npm run lint"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "firebase": "^12.17.1",
+    "framer-motion": "^12.0.0",
+    "lucide-react": "^0.469.0",
+    "next": "^15.5.22",
+    "qrcode": "^1.5.4",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "server-only": "^0.0.1",
+    "tailwind-merge": "^2.6.0",
+    "zod": "^3.24.1"
+  },
+  "overridesReason": "Both overrides pin a transitive dependency of Next forward past a published advisory, rather than taking the breaking Next 16 upgrade that `npm audit fix --force` proposes. sharp 0.34.x inherits libvips CVE-2026-33327/33328/35590/35591 through image optimisation. postcss <=8.5.22 carries four advisories, including arbitrary .map file disclosure via attacker-controlled sourceMappingURL — which matters here because this project compiles CSS at build time. Revisit both when Next 16 is adopted.",
+  "overrides": {
+    "sharp": "^0.35.3",
+    "postcss": "^8.5.23"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^22.10.5",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "eslint": "^9.18.0",
+    "eslint-config-next": "^15.5.22",
+    "postcss": "^8.5.23",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.3"
+  }
+}

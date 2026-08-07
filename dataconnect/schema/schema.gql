@@ -1,0 +1,893 @@
+### ASOO Portal — Data Connect schema
+### SOURCE OF TRUTH for the PostgreSQL database.
+###
+### Rules (see CLAUDE.md §5 and docs/03-data-model.md):
+###   - Money is BIGINT fils. 1 JOD = 1000 fils. Never a float.
+###   - Timestamps are stored UTC, displayed Asia/Amman.
+###   - User-facing text lives in `*Translation` tables keyed by locale.
+###   - Financial rows are append-only. Corrections are new rows.
+###   - Never hand-edit generated SDK output. Change this file instead.
+
+# =============================================================================
+# ENUMS
+# =============================================================================
+
+enum Locale { ar en }
+
+enum MemberStatus { pending active suspended expired withdrawn deceased }
+
+enum ApplicationStatus { submitted under_review info_requested approved rejected }
+
+enum RenewalStatus { draft submitted under_review approved rejected }
+
+enum BillingCycle { annual one_time }
+
+enum InvoiceType { subscription renewal certificate penalty service credit_note adjustment }
+
+enum InvoiceStatus { draft issued partially_paid paid overdue cancelled waived }
+
+enum PaymentAttemptStatus { pending redirected awaiting_payment succeeded failed expired cancelled }
+
+enum PaymentChannel { efawateercom card cash bank_transfer }
+
+enum RefundStatus { requested approved processed rejected failed }
+
+enum PublishStatus { draft scheduled published archived }
+
+"""
+Where a block sits. The syndicate's existing homepage runs the hero and the
+news feed side by side, which a flat vertical stack cannot express.
+`aside` blocks collapse below `main` on mobile.
+"""
+enum LayoutRegion { main aside }
+
+enum LayoutBlockType {
+  hero
+  stat_counters
+  service_grid
+  link_cards
+  news_feed
+  document_list
+  directory_search
+  rich_text
+  cta_banner
+}
+
+enum CertificateStatus { valid expired revoked }
+
+enum CertificateRequestStatus { submitted under_review approved issued rejected }
+
+enum ComplaintType { boundary_dispute technical professional_conduct administrative other }
+
+enum ComplaintStatus { submitted triaged in_progress resolved closed }
+
+enum Priority { low normal high urgent }
+
+enum NotificationChannel { email sms in_app }
+
+enum NotificationStatus { queued sent delivered failed bounced }
+
+enum CampaignStatus { draft scheduled sending sent cancelled }
+
+enum DocumentType { license national_id qualification other }
+
+
+# =============================================================================
+# IDENTITY & ACCESS
+# =============================================================================
+
+"""A person with a login. `id` is the Firebase Auth UID — one identity per person."""
+type User @table(name: "users", key: ["id"]) {
+  id: String!
+  email: String @col(dataType: "citext") @unique
+  phone: String
+  displayName: String
+  preferredLocale: Locale! @default(value: ar)
+  isActive: Boolean! @default(value: true)
+  lastLoginAt: Timestamp
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+type Role @table(name: "roles") {
+  id: UUID! @default(expr: "uuidV4()")
+  code: String! @unique          # super_admin, finance_officer, ...
+  nameAr: String!
+  nameEn: String!
+  description: String
+  isSystem: Boolean! @default(value: true)
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+"""Permissions are `resource:action` strings, e.g. `invoices:issue`."""
+type Permission @table(name: "permissions") {
+  id: UUID! @default(expr: "uuidV4()")
+  code: String! @unique
+  resource: String!
+  action: String!
+  description: String
+}
+
+type RolePermission @table(name: "role_permissions", key: ["role", "permission"]) {
+  role: Role!
+  permission: Permission!
+}
+
+type UserRole @table(name: "user_roles", key: ["user", "role"]) {
+  user: User!
+  role: Role!
+  grantedBy: User
+  grantedAt: Timestamp! @default(expr: "request.time")
+}
+
+"""
+Append-only. NEVER updated, NEVER deleted.
+Written in the same transaction as the mutation it records.
+"""
+type AuditLog @table(name: "audit_logs") {
+  id: UUID! @default(expr: "uuidV4()")
+  actorUser: User                 # null for system jobs
+  actorRole: String               # snapshot — roles change, the log must not
+  action: String!                 # invoice.waive, member.suspend, post.publish
+  entityType: String!
+  entityId: String!
+  before: Any
+  after: Any
+  reason: String                  # required for waivers, suspensions, rejections
+  ipAddress: String
+  userAgent: String
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+
+# =============================================================================
+# REFERENCE DATA
+# =============================================================================
+
+"""The 12 Jordanian governorates. Seeded, not user-editable."""
+type Governorate @table(name: "governorates") {
+  id: UUID! @default(expr: "uuidV4()")
+  code: String! @unique
+  nameAr: String!
+  nameEn: String!
+  position: Int! @default(value: 0)
+}
+
+type MemberCategory @table(name: "member_categories") {
+  id: UUID! @default(expr: "uuidV4()")
+  code: String! @unique
+  nameAr: String!
+  nameEn: String!
+  isActive: Boolean! @default(value: true)
+}
+
+
+# =============================================================================
+# MEMBERSHIP
+# =============================================================================
+
+type Member @table(name: "members") {
+  id: UUID! @default(expr: "uuidV4()")
+  user: User @unique               # null until the member claims their account
+  licenseNumber: String! @unique   # DLS-issued; the public identifier
+  membershipNumber: String! @unique
+  category: MemberCategory!
+  governorate: Governorate!
+  status: MemberStatus! @default(value: pending)
+  joinedAt: Date
+  licenseExpiresAt: Date
+
+  # PII — encrypted at rest, never returned outside the member's own record
+  # or a membership officer's view.
+  nationalId: String
+
+  phone: String
+  email: String @col(dataType: "citext")
+
+  # Directory consent and the separately-publishable contact set.
+  isDirectoryVisible: Boolean! @default(value: false)
+  directoryPhone: String
+  directoryEmail: String
+  directoryAddress: String
+
+  # Normalized for Arabic search: tashkeel stripped, alef/ta-marbuta/ya unified.
+  # Without this, "احمد" does not match "أحمد" — the most common Arabic
+  # search failure. Populated on write, indexed with pg_trgm.
+  searchNormalized: String
+
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+type MemberTranslation @table(name: "member_translations", key: ["member", "locale"]) {
+  member: Member!
+  locale: Locale!
+  fullName: String!
+  officeName: String
+  bio: String
+  specializations: [String]
+}
+
+"""Stored in the PRIVATE bucket. Never served by public URL."""
+type MemberDocument @table(name: "member_documents") {
+  id: UUID! @default(expr: "uuidV4()")
+  member: Member!
+  documentType: DocumentType!
+  storagePath: String!
+  fileName: String!
+  fileSize: Int
+  mimeType: String
+  verifiedBy: User
+  verifiedAt: Timestamp
+  expiresAt: Date
+  uploadedAt: Timestamp! @default(expr: "request.time")
+}
+
+"""The public join form. Kept permanently — a rejection is part of the record."""
+type MembershipApplication @table(name: "membership_applications") {
+  id: UUID! @default(expr: "uuidV4()")
+  applicantName: String!
+  applicantEmail: String! @col(dataType: "citext")
+  applicantPhone: String!
+  nationalId: String
+  licenseNumber: String
+  category: MemberCategory
+  governorate: Governorate
+  officeName: String
+  notes: String
+  status: ApplicationStatus! @default(value: submitted)
+  reviewedBy: User
+  reviewedAt: Timestamp
+  reviewNotes: String
+  createdMember: Member            # set on approval
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+"""One per member per membership year. Unique on (member, membershipYear)."""
+type Renewal @table(name: "renewals", key: ["member", "membershipYear"]) {
+  member: Member!
+  membershipYear: Int!
+  status: RenewalStatus! @default(value: draft)
+  submittedAt: Timestamp
+  reviewedBy: User
+  reviewedAt: Timestamp
+  reviewNotes: String
+  invoice: Invoice
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+
+# =============================================================================
+# FINANCE  —  append-only. Corrections are new rows, never updates.
+# =============================================================================
+
+"""
+Versioned by date, never edited in place. Changing the 2026 fee creates a new
+row; 2025 invoices keep pointing at the 2025 row and still reconcile.
+"""
+type FeePlan @table(name: "fee_plans") {
+  id: UUID! @default(expr: "uuidV4()")
+  code: String!
+  category: MemberCategory         # null = applies to all categories
+  amountFils: Int64!               # 1 JOD = 1000 fils
+  currency: String! @default(value: "JOD")
+  billingCycle: BillingCycle!
+  effectiveFrom: Date!
+  effectiveTo: Date
+  isActive: Boolean! @default(value: true)
+  createdBy: User
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type FeePlanTranslation @table(name: "fee_plan_translations", key: ["feePlan", "locale"]) {
+  feePlan: FeePlan!
+  locale: Locale!
+  name: String!
+  description: String
+}
+
+type Invoice @table(name: "invoices") {
+  id: UUID! @default(expr: "uuidV4()")
+
+  # Human-facing, sequential per year: ASOO-2026-000123.
+  # Generated from a Postgres sequence — never from a COUNT, which races.
+  invoiceNumber: String! @unique
+
+  member: Member                   # null for a public/contractor invoice
+  payerName: String
+  payerContact: String
+
+  type: InvoiceType!
+  parentInvoice: Invoice           # set on credit notes and adjustments
+  status: InvoiceStatus! @default(value: draft)
+
+  subtotalFils: Int64! @default(value: 0)
+  discountFils: Int64! @default(value: 0)
+  totalFils: Int64! @default(value: 0)
+  paidFils: Int64! @default(value: 0)
+  currency: String! @default(value: "JOD")
+
+  issuedAt: Timestamp
+  dueAt: Timestamp
+  settledAt: Timestamp
+
+  # Short opaque code entered on /services/pay to find a bill without
+  # logging in. RANDOM, not sequential — a sequential reference would let
+  # anyone enumerate every invoice in the system.
+  publicReference: String @unique
+
+  notes: String
+  createdBy: User
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+type InvoiceLine @table(name: "invoice_lines") {
+  id: UUID! @default(expr: "uuidV4()")
+  invoice: Invoice!
+  feePlan: FeePlan                 # null for ad-hoc lines
+  # Snapshot text — a later fee-plan rename must not rewrite invoice history.
+  description: String!
+  quantity: Int! @default(value: 1)
+  unitAmountFils: Int64!
+  lineTotalFils: Int64!
+  position: Int! @default(value: 0)
+}
+
+"""One row each time a payer starts a payment. Multiple attempts are normal."""
+type PaymentAttempt @table(name: "payment_attempts") {
+  id: UUID! @default(expr: "uuidV4()")
+  invoice: Invoice!
+  provider: String!                # mock | efawateercom | hyperpay | ...
+  providerRef: String
+  billNumber: String               # eFAWATEERcom bill number
+  amountFils: Int64!
+  status: PaymentAttemptStatus! @default(value: pending)
+  redirectUrl: String
+  failureReason: String
+  expiresAt: Timestamp
+  initiatedBy: User                # null for anonymous public payment
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+"""
+A SETTLED payment. Created by the webhook handler only — never by a client.
+`providerTransactionId` is unique; that constraint is what makes webhook
+replay safe.
+"""
+type Payment @table(name: "payments") {
+  id: UUID! @default(expr: "uuidV4()")
+  invoice: Invoice!
+  attempt: PaymentAttempt
+  provider: String!
+  providerTransactionId: String! @unique   # IDEMPOTENCY KEY
+  amountFils: Int64!
+  currency: String! @default(value: "JOD")
+  channel: PaymentChannel!
+  paidAt: Timestamp!
+  reconciledAt: Timestamp
+  # Cash and bank transfers are recorded by a finance officer in person.
+  recordedBy: User
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+"""
+IMMUTABLE raw provider log. Written BEFORE any business logic runs, so a bug
+in processing never loses the provider's message.
+"""
+type PaymentWebhook @table(name: "payment_webhooks") {
+  id: UUID! @default(expr: "uuidV4()")
+  provider: String!
+  eventId: String! @unique
+  eventType: String
+  signatureValid: Boolean!
+  rawPayload: Any!
+  attempt: PaymentAttempt
+  receivedAt: Timestamp! @default(expr: "request.time")
+  processedAt: Timestamp
+  processingError: String
+}
+
+type Receipt @table(name: "receipts") {
+  id: UUID! @default(expr: "uuidV4()")
+  payment: Payment! @unique
+  receiptNumber: String! @unique
+  storagePath: String
+  issuedAt: Timestamp! @default(expr: "request.time")
+}
+
+"""Never modifies the original payment row."""
+type Refund @table(name: "refunds") {
+  id: UUID! @default(expr: "uuidV4()")
+  payment: Payment!
+  amountFils: Int64!
+  reason: String!                  # required
+  status: RefundStatus! @default(value: requested)
+  providerRef: String
+  requestedBy: User
+  approvedBy: User
+  processedAt: Timestamp
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+
+# =============================================================================
+# CONTENT / CMS
+# =============================================================================
+
+type PostCategory @table(name: "post_categories") {
+  id: UUID! @default(expr: "uuidV4()")
+  slug: String! @unique
+  nameAr: String!
+  nameEn: String!
+  position: Int! @default(value: 0)
+}
+
+type MediaAsset @table(name: "media_assets") {
+  id: UUID! @default(expr: "uuidV4()")
+  storagePath: String!
+  fileName: String!
+  mimeType: String!
+  fileSize: Int
+  width: Int
+  height: Int
+  altTextAr: String                # accessibility is not optional
+  altTextEn: String
+  uploadedBy: User
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type Post @table(name: "posts") {
+  id: UUID! @default(expr: "uuidV4()")
+  category: PostCategory
+  slug: String! @unique            # ASCII, transliterated — never raw Arabic
+  status: PublishStatus! @default(value: draft)
+  publishedAt: Timestamp
+  featuredImage: MediaAsset
+  isFeatured: Boolean! @default(value: false)
+  viewCount: Int! @default(value: 0)
+  deletedAt: Timestamp
+  createdBy: User
+  updatedBy: User
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+type PostTranslation @table(name: "post_translations", key: ["post", "locale"]) {
+  post: Post!
+  locale: Locale!
+  title: String!
+  excerpt: String
+  body: String
+  seoTitle: String
+  seoDescription: String
+}
+
+type Page @table(name: "pages") {
+  id: UUID! @default(expr: "uuidV4()")
+  slug: String! @unique
+  isSystem: Boolean! @default(value: false)   # route depends on it; undeletable
+  status: PublishStatus! @default(value: draft)
+  createdBy: User
+  updatedBy: User
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+type PageTranslation @table(name: "page_translations", key: ["page", "locale"]) {
+  page: Page!
+  locale: Locale!
+  title: String!
+  body: String
+  seoTitle: String
+  seoDescription: String
+}
+
+type DocumentCategory @table(name: "document_categories") {
+  id: UUID! @default(expr: "uuidV4()")
+  slug: String! @unique            # legislation | tariffs | instructions | forms
+  nameAr: String!
+  nameEn: String!
+  position: Int! @default(value: 0)
+}
+
+type SyndicateDocument @table(name: "documents") {
+  id: UUID! @default(expr: "uuidV4()")
+  category: DocumentCategory!
+  slug: String! @unique
+  storagePath: String              # uploaded file
+  externalUrl: String              # or hosted on a government site
+  fileSize: Int
+  mimeType: String
+  officialReference: String        # e.g. "Law 43/1972"
+  status: PublishStatus! @default(value: draft)
+  publishedAt: Timestamp
+  position: Int! @default(value: 0)
+  downloadCount: Int! @default(value: 0)
+  deletedAt: Timestamp
+  createdBy: User
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+type DocumentTranslation @table(name: "document_translations", key: ["document", "locale"]) {
+  document: SyndicateDocument!
+  locale: Locale!
+  title: String!
+  description: String
+}
+
+type LinkGroup @table(name: "link_groups") {
+  id: UUID! @default(expr: "uuidV4()")
+  code: String! @unique            # gov_services | survey_maps
+  nameAr: String!
+  nameEn: String!
+  position: Int! @default(value: 0)
+}
+
+"""
+Admin-editable. When a ministry launches a new portal, a content editor adds
+a card — no deploy required.
+"""
+type ExternalLink @table(name: "external_links") {
+  id: UUID! @default(expr: "uuidV4()")
+  group: LinkGroup!
+  url: String!
+  icon: String
+  position: Int! @default(value: 0)
+  isActive: Boolean! @default(value: true)
+  createdBy: User
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+type ExternalLinkTranslation @table(name: "external_link_translations", key: ["link", "locale"]) {
+  link: ExternalLink!
+  locale: Locale!
+  title: String!
+  description: String
+}
+
+
+# -----------------------------------------------------------------------------
+# Homepage block composition — see docs/09-cms.md
+# -----------------------------------------------------------------------------
+
+type Layout @table(name: "layouts") {
+  id: UUID! @default(expr: "uuidV4()")
+  code: String! @unique            # homepage, ...
+  nameAr: String!
+  nameEn: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+"""
+`position` is gap-numbered by 10 so a reorder does not renumber every sibling.
+`config` is jsonb validated against a per-type Zod schema in the application.
+"""
+type LayoutBlock @table(name: "layout_blocks") {
+  id: UUID! @default(expr: "uuidV4()")
+  layout: Layout!
+  type: LayoutBlockType!
+  region: LayoutRegion! @default(value: main)
+  position: Int! @default(value: 0)
+  isPublished: Boolean! @default(value: false)
+  config: Any                      # validated per block type
+  updatedBy: User
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+type LayoutBlockTranslation @table(name: "layout_block_translations", key: ["block", "locale"]) {
+  block: LayoutBlock!
+  locale: Locale!
+  heading: String
+  subheading: String
+  body: String
+  ctaLabel: String
+  items: Any                       # per-item text for grids and counters
+}
+
+
+# =============================================================================
+# MEMBER SERVICES
+# =============================================================================
+
+type CertificateType @table(name: "certificate_types") {
+  id: UUID! @default(expr: "uuidV4()")
+  code: String! @unique            # good_standing | membership | no_objection
+  nameAr: String!
+  nameEn: String!
+  requiresApproval: Boolean! @default(value: true)
+  validityDays: Int
+  feePlan: FeePlan                 # null = free
+  isActive: Boolean! @default(value: true)
+}
+
+type CertificateRequest @table(name: "certificate_requests") {
+  id: UUID! @default(expr: "uuidV4()")
+  member: Member!
+  type: CertificateType!
+  purpose: String                  # often printed on the certificate itself
+  status: CertificateRequestStatus! @default(value: submitted)
+  reviewedBy: User
+  reviewedAt: Timestamp
+  reviewNotes: String
+  invoice: Invoice                 # if billable
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+"""
+`verificationCode` is what the QR encodes. The public verification endpoint
+returns ONLY validity, type, public name, license number, and dates —
+a verification page is not a data-leak surface.
+"""
+type Certificate @table(name: "certificates") {
+  id: UUID! @default(expr: "uuidV4()")
+  request: CertificateRequest @unique
+  member: Member!
+  type: CertificateType!
+  certificateNumber: String! @unique
+  verificationCode: String! @unique   # random, URL-safe
+  storagePath: String
+  status: CertificateStatus! @default(value: valid)
+  issuedAt: Timestamp! @default(expr: "request.time")
+  expiresAt: Timestamp
+  issuedBy: User
+  revokedAt: Timestamp
+  revokedReason: String
+}
+
+type Complaint @table(name: "complaints") {
+  id: UUID! @default(expr: "uuidV4()")
+  complaintNumber: String! @unique
+  complainantMember: Member        # null when a member of the public complains
+  complainantName: String
+  complainantEmail: String
+  complainantPhone: String
+  subjectMember: Member            # who the complaint is about
+  type: ComplaintType!
+  status: ComplaintStatus! @default(value: submitted)
+  priority: Priority! @default(value: normal)
+  subject: String!
+  body: String!
+  assignedTo: User
+  resolutionSummary: String
+  resolvedAt: Timestamp
+  closedAt: Timestamp
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+type ComplaintMessage @table(name: "complaint_messages") {
+  id: UUID! @default(expr: "uuidV4()")
+  complaint: Complaint!
+  author: User
+  authorName: String               # for unauthenticated complainants
+  body: String!
+  isInternal: Boolean! @default(value: false)   # staff-only note
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+"""Points at the PRIVATE bucket."""
+type ComplaintAttachment @table(name: "complaint_attachments") {
+  id: UUID! @default(expr: "uuidV4()")
+  complaint: Complaint!
+  message: ComplaintMessage
+  storagePath: String!
+  fileName: String!
+  fileSize: Int
+  mimeType: String
+  uploadedBy: User
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+
+# =============================================================================
+# NOTIFICATIONS
+# =============================================================================
+
+type NotificationTemplate @table(name: "notification_templates") {
+  id: UUID! @default(expr: "uuidV4()")
+  code: String! @unique
+  channel: NotificationChannel!
+  # Declared allow-list, so a template cannot reference a field that
+  # does not exist.
+  allowedVariables: [String]
+  isActive: Boolean! @default(value: true)
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+type NotificationTemplateTranslation
+  @table(name: "notification_template_translations", key: ["template", "locale"]) {
+  template: NotificationTemplate!
+  locale: Locale!
+  subject: String
+  body: String!
+}
+
+type NotificationCampaign @table(name: "notification_campaigns") {
+  id: UUID! @default(expr: "uuidV4()")
+  template: NotificationTemplate!
+  name: String!
+  # jsonb predicate: status, governorate, category, overdue balance
+  segmentFilter: Any
+  scheduledAt: Timestamp
+  status: CampaignStatus! @default(value: draft)
+  recipientCount: Int! @default(value: 0)
+  sentCount: Int! @default(value: 0)
+  createdBy: User
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+"""
+One row per recipient per send. Exists so "did this member receive their
+renewal reminder" is answerable — non-payment disputes will turn on it.
+"""
+type Notification @table(name: "notifications") {
+  id: UUID! @default(expr: "uuidV4()")
+  user: User
+  member: Member
+  campaign: NotificationCampaign   # null for transactional sends
+  template: NotificationTemplate
+  channel: NotificationChannel!
+  recipientAddress: String!
+  subject: String
+  body: String
+  status: NotificationStatus! @default(value: queued)
+  providerMessageId: String
+  error: String
+  sentAt: Timestamp
+  deliveredAt: Timestamp
+  readAt: Timestamp
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+
+# =============================================================================
+# ORDERS, REPORT REVIEW & APPROVAL   (added Phase 2)
+#
+# A surveyor uploads a technical report (PDF / Word / DWG) against an ORDER.
+# Syndicate staff review it and either approve, reject, or request a revision.
+# On approval an APPROVAL artifact is issued carrying a random verification
+# code; a QR encoding that code lets anyone confirm the approval on a public
+# page — the workflow the syndicate asked for.
+#
+# Design rules that carry over from the rest of the schema:
+#   - Report files live in the PRIVATE bucket; only signed URLs, never public.
+#   - Reviews and approvals are APPEND-ONLY history. A re-review is a new row.
+#   - A resubmission is a NEW submission row with an incremented version, so the
+#     full trail of what was uploaded and when survives audit.
+#   - The public verify endpoint exposes the MINIMUM: valid/revoked, order
+#     number, title, member name, approval date. Never the file, never PII.
+# =============================================================================
+
+enum OrderType {
+  land_subdivision      # إفراز
+  land_settlement       # تسوية
+  topographic_survey    # رفع مساحي
+  boundary_survey       # تحديد حدود
+  site_plan             # مخطط موقع
+  other
+}
+
+enum OrderStatus {
+  draft
+  submitted             # member has attached at least one report
+  in_review             # staff is reviewing
+  revision_requested    # sent back to the member
+  approved
+  rejected
+  cancelled
+  completed             # approval issued and closed
+}
+
+"""The file kinds a surveyor may upload. DWG is the AutoCAD binary drawing."""
+enum ReportFileType { pdf docx dwg }
+
+enum SubmissionStatus {
+  uploaded
+  under_review
+  revision_requested
+  approved
+  rejected
+  superseded            # replaced by a newer version
+}
+
+enum ReviewDecision { approved rejected revision_requested }
+
+enum ApprovalStatus { valid revoked }
+
+"""
+A unit of survey work a report is filed against. `orderNumber` is the human
+identifier a member types on the upload form to connect their file; the random
+nothing-derived id stays internal.
+"""
+type Order @table(name: "orders") {
+  id: UUID! @default(expr: "uuidV4()")
+  orderNumber: String! @unique          # ORD-2026-000123, from a sequence
+  member: Member!                        # the surveyor responsible
+  governorate: Governorate
+  type: OrderType!
+  status: OrderStatus! @default(value: draft)
+  title: String!
+  parcelReference: String                # basin / block / parcel, survey context
+  clientName: String                     # who the work is for (optional)
+  notes: String
+  submittedAt: Timestamp                 # first report attached
+  decidedAt: Timestamp                   # approved or rejected
+  createdBy: User
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+"""
+One uploaded report file, linked to an order. A resubmission is a NEW row with
+`version` + 1 and the prior row marked `superseded`, so the history is intact.
+Files are in the PRIVATE bucket — served only via short-lived signed URLs after
+a permission check.
+"""
+type ReportSubmission @table(name: "report_submissions") {
+  id: UUID! @default(expr: "uuidV4()")
+  order: Order!
+  submittedBy: User!
+  fileType: ReportFileType!
+  storagePath: String!
+  fileName: String!
+  fileSize: Int
+  mimeType: String
+  # SHA-256 of the bytes. Integrity matters for DWG/reports that carry legal
+  # weight — a stored checksum proves the reviewed file is the issued file.
+  checksum: String
+  version: Int! @default(value: 1)
+  status: SubmissionStatus! @default(value: uploaded)
+  # Uploaded-but-unscanned files are never served. See docs/08-security §6.
+  virusScanned: Boolean! @default(value: false)
+  note: String
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+"""
+An immutable review decision on a submission. Append-only: a second look is a
+second row. Written in the same transaction as the submission status change,
+via the shared audit wrapper.
+"""
+type ReportReview @table(name: "report_reviews") {
+  id: UUID! @default(expr: "uuidV4()")
+  submission: ReportSubmission!
+  reviewer: User!
+  reviewerRole: String                   # snapshot at decision time
+  decision: ReviewDecision!
+  comments: String                       # required for reject / revision
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+"""
+The approval artifact issued when a report passes review. `verificationCode` is
+what the QR encodes; the public verify page reads THIS by code and returns only
+non-sensitive fields. One approval per approved submission.
+"""
+type ReportApproval @table(name: "report_approvals") {
+  id: UUID! @default(expr: "uuidV4()")
+  submission: ReportSubmission! @unique
+  order: Order!                          # denormalised for the public lookup
+  approvalNumber: String! @unique        # APR-2026-000123, from a sequence
+  # Random, URL-safe, NOT derived from any sequential id — a sequential code
+  # would let anyone enumerate every approval. docs/08-security §8.
+  verificationCode: String! @unique
+  storagePath: String                    # approval PDF carrying the QR
+  status: ApprovalStatus! @default(value: valid)
+  approvedBy: User!
+  issuedAt: Timestamp! @default(expr: "request.time")
+  expiresAt: Timestamp
+  revokedAt: Timestamp
+  revokedReason: String
+}

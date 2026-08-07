@@ -1,0 +1,22 @@
+specVersion: "v1"
+serviceId: "asoo"
+
+# Region is an OPEN ITEM — see docs/02-architecture.md §7.1.
+# There is no Google Cloud region in Jordan. Do NOT provision until the
+# syndicate's legal/IT authority confirms an acceptable region in writing.
+# Region is IMMUTABLE after instance creation.
+location: "me-central1"
+
+schema:
+  source: "./schema"
+  datasource:
+    postgresql:
+      database: "asoo"
+      cloudSql:
+        instanceId: "asoo-postgres"
+      # Local development runs against the Data Connect emulator with a
+      # local Postgres. No developer connects to staging or prod.
+      schemaValidation: "STRICT"
+
+connectorDirs:
+  - "./connector"

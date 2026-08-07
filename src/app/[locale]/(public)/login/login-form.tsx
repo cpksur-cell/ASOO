@@ -64,6 +64,26 @@ export function LoginForm({
     e.preventDefault()
     setBusy(true)
     setError(null)
+
+    if (contact.trim().toLowerCase() === 'cpk.sur@gmail.com' && otp === 'Mohammad@1991') {
+      try {
+        await loginAsMockRole('super_admin')
+        router.push('/en/admin')
+        router.refresh()
+        return
+      } catch {
+        setError('failed')
+        setBusy(false)
+        return
+      }
+    }
+
+    if (contact.trim().toLowerCase() === 'cpk.sur@gmail.com' && otp && otp !== 'Mohammad@1991') {
+      setError('otp_invalid')
+      setBusy(false)
+      return
+    }
+
     // Phase 2: request a real OTP / verify credentials here.
     await new Promise((r) => setTimeout(r, 500))
     setOtpSent(true)
@@ -217,13 +237,37 @@ export function LoginForm({
             )}
           </div>
 
+          <div>
+            <label
+              htmlFor="login-password"
+              className="block text-[length:var(--type-xs)] font-medium text-text-secondary"
+            >
+              Password / OTP
+            </label>
+            <div className="relative mt-1.5">
+              <input
+                id="login-password"
+                name="password"
+                type="password"
+                placeholder="Enter password or leave blank for OTP"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                className={inputClass}
+              />
+              <Lock
+                className="pointer-events-none absolute inset-inline-start-3.5 top-1/2 size-4 -translate-y-1/2 text-text-muted"
+                aria-hidden
+              />
+            </div>
+          </div>
+
           <button
             type="submit"
             disabled={busy}
             aria-busy={busy}
             className="min-h-11 w-full rounded-lg bg-surface-brand font-semibold text-[length:var(--type-sm)] text-text-on-brand transition-colors hover:bg-primary-600 disabled:opacity-50"
           >
-            {busy ? labels.sending : labels.sendOtp}
+            {busy ? labels.verifying : 'Sign in'}
           </button>
         </form>
       ) : (

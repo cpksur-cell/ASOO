@@ -43,11 +43,11 @@ These are not preferences. Violating any of them is a defect.
 |---|---|---|
 | Framework | **Next.js (App Router)** | Server Components by default. `"use client"` requires a reason you can state in one sentence. |
 | Language | **TypeScript, `strict: true`** | `any` requires an inline justification comment. |
-| Hosting | **Firebase App Hosting** | Google-managed Next.js runtime on Cloud Run. |
-| Database | **Firebase Data Connect** → **PostgreSQL** (Cloud SQL) | Real SQL. Schema in `dataconnect/schema/schema.gql`. |
-| Auth | **Firebase Authentication** | Roles as custom claims, mirrored in Postgres. |
-| Files | **Cloud Storage for Firebase** | Private bucket for PII. Signed URLs only. |
-| Secrets | **Google Secret Manager** | Never `.env` in git. |
+| Hosting | **Vercel** | Deployed at asoojo.com. (Migrated off Firebase App Hosting.) |
+| Database | **Supabase** → **PostgreSQL** | Real SQL. Runnable migrations in `supabase/migrations/`; `dataconnect/schema/schema.gql` kept as the design source of truth. See `docs/11-supabase.md`. |
+| Auth | **Supabase Auth** (pending) → currently mock auth, disabled in prod | Roles mirrored in Postgres. Supabase Auth is the next step. |
+| Files | **Supabase Storage** | Private bucket for PII. Signed URLs only. |
+| Secrets | **Vercel env vars / `.env.local`** | Never `.env` in git. Service-role key server-only. |
 | Styling | **Tailwind CSS** + **shadcn/ui** | Tokens drive the Tailwind theme — see §6. |
 | Validation | **Zod** | One schema per boundary; parse at the edge, trust inside. |
 | Domain/email | **Google Workspace** | Production domain maps to App Hosting. |

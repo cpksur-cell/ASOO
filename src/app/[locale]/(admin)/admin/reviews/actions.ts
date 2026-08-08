@@ -9,10 +9,8 @@ import {
   addApproval,
   getApprovalForSubmission,
   getSubmission,
-  nextApprovalNumber,
   setSubmissionDecision,
-} from '@/lib/data/store'
-import { generateVerificationCode } from '@/lib/reports'
+} from '@/lib/data/reports-source'
 
 export type ReviewResult =
   | { ok: true; verificationCode?: string }
@@ -51,15 +49,14 @@ export async function reviewReportAction(input: unknown): Promise<ReviewResult> 
   try {
     await assertPermission('reports', decision === 'approved' ? 'approve' : 'review')
 
-    const submission = getSubmission(submissionId)
+    const submission = await getSubmission(submissionId)
     if (!submission) return { ok: false, error: 'NOT_FOUND' }
 
     if (decision === 'approved') {
       // Idempotent-ish: if already approved, return the existing code.
-      const existing = getApprovalForSubmission(submissionId)
+      const existing = await getApprovalForSubmission(submissionId)
       if (existing) return { ok: true, verificationCode: existing.verificationCode }
 
-      const code = generateVerificationCode()
       const result = await withAudit(
         {
           action: 'report.approve',
@@ -68,16 +65,16 @@ export async function reviewReportAction(input: unknown): Promise<ReviewResult> 
           before: { status: submission.status },
         },
         async () => {
-          setSubmissionDecision(submissionId, 'approved', comment || null)
+          await setSubmissionDecision(submissionId, 'approved', comment || null)
           const session = await assertPermission('reports', 'approve')
-          addApproval({
+          // The data source (DB or fallback) owns the approval number and the
+          // random verification code and returns both — a client never sets them.
+          const approval = await addApproval({
             submissionId,
             orderId: submission.orderId,
-            approvalNumber: nextApprovalNumber(),
-            verificationCode: code,
             approvedByUid: session.uid,
           })
-          return { verificationCode: code }
+          return { verificationCode: approval.verificationCode }
         },
       )
       revalidatePath('/ar/admin/reviews')

@@ -4,7 +4,7 @@ import { formatFileSize } from '@/i18n/format'
 import { createTranslator, getDictionary, isLocale, type Locale } from '@/i18n/config'
 import { can } from '@/lib/auth/server'
 import { href } from '@/lib/routes'
-import { getOrder, listReviewQueue } from '@/lib/data/store'
+import { getOrder, listReviewQueue } from '@/lib/data/reports-source'
 import { members as seedMembers } from '@/lib/data/seed'
 
 import { ReviewQueue, type ReviewLabels } from './review-queue'
@@ -28,8 +28,9 @@ export default async function AdminReviewsPage({
   // submission's user to the member record for the real name.
   const demoMemberName = seedMembers[0]!.fullName[typed]
 
-  const items = listReviewQueue().map((s) => {
-    const order = getOrder(s.orderId)
+  const items = await Promise.all(
+    (await listReviewQueue()).map(async (s) => {
+    const order = await getOrder(s.orderId)
     return {
       id: s.id,
       orderNumber: order?.orderNumber ?? s.orderId,
@@ -42,7 +43,8 @@ export default async function AdminReviewsPage({
       version: s.version,
       note: s.note,
     }
-  })
+    }),
+  )
 
   const labels: ReviewLabels = {
     title: t('reports.queueTitle'),

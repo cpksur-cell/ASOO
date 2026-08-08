@@ -9,7 +9,7 @@ import {
   getApprovalForSubmission,
   listOrdersForUser,
   listSubmissionsForOrder,
-} from '@/lib/data/store'
+} from '@/lib/data/reports-source'
 import { SUBMISSION_LABEL_KEY, SUBMISSION_TONE } from '@/lib/reports'
 import { Card, EmptyState, Mono } from '@/components/ui/primitives'
 import { GenericStatusBadge, MemberPageHeader, DemoBanner } from '@/components/features/member-ui'
@@ -29,12 +29,14 @@ export default async function ReportsPage({
   const session = await getUserSession()
   if (!session) redirect(href(typed, 'login'))
 
-  const orders = listOrdersForUser(session.uid).map((o) => {
-    const submissions = listSubmissionsForOrder(o.id)
-    const latest = submissions[0] ?? null
-    const approval = latest ? getApprovalForSubmission(latest.id) : null
-    return { order: o, submissions, latest, approval }
-  })
+  const orders = await Promise.all(
+    (await listOrdersForUser(session.uid)).map(async (o) => {
+      const submissions = await listSubmissionsForOrder(o.id)
+      const latest = submissions[0] ?? null
+      const approval = latest ? await getApprovalForSubmission(latest.id) : null
+      return { order: o, submissions, latest, approval }
+    }),
+  )
 
   return (
     <div>

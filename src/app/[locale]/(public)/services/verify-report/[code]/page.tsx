@@ -5,7 +5,7 @@ import { BadgeCheck, ShieldX, XCircle } from 'lucide-react'
 import { createTranslator, getDictionary, isLocale, type Locale } from '@/i18n/config'
 import { formatDate } from '@/i18n/format'
 import { href } from '@/lib/routes'
-import { getApprovalByCode, getOrder, getSubmission } from '@/lib/data/store'
+import { getApprovalByCode, getOrder, getSubmission } from '@/lib/data/reports-source'
 import { members as seedMembers } from '@/lib/data/seed'
 import { Breadcrumbs } from '@/components/layout/breadcrumbs'
 import { Card, Mono, PageHeader } from '@/components/ui/primitives'
@@ -26,9 +26,9 @@ export default async function VerifyReportPage({
   const typed: Locale = locale
   const t = createTranslator(getDictionary(typed))
 
-  const approval = getApprovalByCode(code)
-  const order = approval ? getOrder(approval.orderId) : null
-  const submission = approval ? getSubmission(approval.submissionId) : null
+  const approval = await getApprovalByCode(code)
+  const order = approval ? await getOrder(approval.orderId) : null
+  const submission = approval ? await getSubmission(approval.submissionId) : null
   const member = seedMembers[0] // demo: the mock member
 
   const state: 'valid' | 'revoked' | 'not_found' =

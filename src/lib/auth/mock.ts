@@ -9,15 +9,21 @@
  *  full administrative control of a government system that handles money and
  *  national ID documents — to an unauthenticated stranger, over the internet.
  *
- *  Gate: ASOO_ENABLE_MOCK_AUTH must be exactly 'true'.
- *  This is set intentionally in the Vercel environment for the Phase 2 demo.
- *  The NODE_ENV guard has been removed for the demo deployment and will be
- *  reinstated when Firebase Auth is wired up in Phase 3.
+ *  Gate: BOTH must hold —
+ *    1. NODE_ENV !== 'production'  (Vercel production builds set this, so a
+ *       forged role cookie replayed against asoojo.com is refused outright)
+ *    2. ASOO_ENABLE_MOCK_AUTH === 'true'
+ *
+ *  The production guard was briefly removed for a demo, which left the live
+ *  site able to mint a `super_admin` cookie for any anonymous visitor. It is
+ *  reinstated here. Real identity comes from Supabase Auth (next step); until
+ *  then the live site has no privileged access at all, which is the safe state
+ *  for a system handling money and national-ID documents.
  *
  * ─────────────────────────────────────────────────────────────────────────
  */
 export function isMockAuthEnabled(): boolean {
-  return process.env.ASOO_ENABLE_MOCK_AUTH === 'true'
+  return process.env.NODE_ENV !== 'production' && process.env.ASOO_ENABLE_MOCK_AUTH === 'true'
 }
 
 /** Cookie names, in one place so the route and the reader cannot drift. */

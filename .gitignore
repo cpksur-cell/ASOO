@@ -38,6 +38,11 @@ dataconnect-debug.log
 dataconnect-generated/
 dataconnect/.dataconnect/
 
+# Supabase CLI local artifacts — never commit local state or generated types diff
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+
 # Generated design tokens — regenerate with `npm run tokens:build`
 app/styles/tokens.generated.css
 tailwind.tokens.generated.js
@@ -91,3 +96,5 @@ scratch/
 *.csv
 *.xlsx
 !docs/**/*.csv
+
+.vercel

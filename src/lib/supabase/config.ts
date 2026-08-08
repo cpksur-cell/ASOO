@@ -1,0 +1,31 @@
+/**
+ * Whether the app has real Supabase credentials to talk to.
+ *
+ * The whole data layer is written to degrade gracefully: when this returns
+ * false — which is the case on any deployment where the Supabase env vars have
+ * not been set yet — reads and writes fall back to the in-memory demo store, so
+ * the live site keeps working exactly as before. The moment the three vars
+ * below are present, the same call sites start hitting Postgres instead.
+ *
+ * This runs on the SERVER only. The service-role key must never reach a client
+ * bundle, so nothing here is exported to browser code.
+ */
+export function isSupabaseConfigured(): boolean {
+  return Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+  )
+}
+
+/** Reads the required server env, throwing a clear error if half-configured. */
+export function requireSupabaseServerEnv(): { url: string; serviceRoleKey: string } {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !serviceRoleKey) {
+    throw new Error(
+      'Supabase is not fully configured: set NEXT_PUBLIC_SUPABASE_URL and ' +
+        'SUPABASE_SERVICE_ROLE_KEY. See docs/11-supabase.md.',
+    )
+  }
+  return { url, serviceRoleKey }
+}

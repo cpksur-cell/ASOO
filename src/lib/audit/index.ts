@@ -4,6 +4,8 @@ import { headers } from 'next/headers'
 
 import { getUserSession } from '@/lib/auth/server'
 import { appendAuditRow, type AuditRow } from '@/lib/data/store'
+import { isSupabaseConfigured } from '@/lib/supabase/config'
+import { getServiceClient } from '@/lib/supabase/server'
 
 /**
  * The audited mutation wrapper.
@@ -80,6 +82,29 @@ export async function withAudit<T>(
     userAgent = h.get('user-agent')
   } catch {
     /* outside a request scope */
+  }
+
+  if (isSupabaseConfigured()) {
+    // Real database: append an immutable audit_logs row. The table's rules
+    // reject UPDATE/DELETE, so this record cannot later be rewritten.
+    const { error } = await getServiceClient()
+      .from('audit_logs')
+      .insert({
+        actor_user_id: session.uid,
+        actor_role: session.role, // snapshot, not a reference — roles change
+        action: ctx.action,
+        entity_type: ctx.entityType,
+        entity_id: ctx.entityId,
+        before: ctx.before ?? null,
+        after: result ?? null,
+        reason: ctx.reason ?? null,
+        ip_address: ip,
+        user_agent: userAgent,
+      })
+    // A mutation without its audit record is not an acceptable outcome for a
+    // government system — surface the failure to the caller.
+    if (error) throw new AuditError(`Audit write failed: ${error.message}`)
+    return result
   }
 
   const row: AuditRow = {

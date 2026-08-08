@@ -4,7 +4,7 @@ import { z } from 'zod'
 
 import { assertPermission, AuthError } from '@/lib/auth/server'
 import { withAudit } from '@/lib/audit'
-import { addSubmission, getOrderByNumber } from '@/lib/data/store'
+import { addSubmission, getOrderByNumber } from '@/lib/data/reports-source'
 import { ALLOWED_FILE_TYPES, MAX_REPORT_BYTES, fileTypeFromName } from '@/lib/reports'
 
 export type SubmitResult =
@@ -46,7 +46,7 @@ export async function submitReportAction(input: unknown): Promise<SubmitResult> 
   try {
     const session = await assertPermission('reports', 'submit')
 
-    const order = getOrderByNumber(orderNumber)
+    const order = await getOrderByNumber(orderNumber)
     if (!order || order.ownerUid !== session.uid) {
       return { ok: false, error: 'ORDER_NOT_FOUND' }
     }

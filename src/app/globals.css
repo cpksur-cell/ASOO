@@ -152,6 +152,92 @@
 }
 .plan-station { animation-delay: 1300ms; }
 
+/* ---------------------------------------------------------------- geodesy
+ * The hero globe. Geodesy is literally "measuring the Earth", so the graticule
+ * (meridians + parallels) and a triangulation network are the honest visual
+ * language of this profession — not decoration borrowed from a SaaS template.
+ *
+ * A meridian is drawn as an ellipse whose horizontal radius is the projection
+ * of that longitude line. Animating scaleX through 1 → 0 → -1 → 0 → 1 sweeps
+ * that projection through a full turn, and staggering the phase across the
+ * meridians reads as one sphere rotating. Transform only — never rx — so this
+ * stays on the compositor and never triggers layout (§7 transform-performance).
+ */
+@keyframes globe-meridian {
+  0%   { transform: scaleX(1); }
+  25%  { transform: scaleX(0.02); }
+  50%  { transform: scaleX(-1); }
+  75%  { transform: scaleX(0.02); }
+  100% { transform: scaleX(1); }
+}
+
+.globe-meridian {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: globe-meridian 28s linear infinite;
+}
+
+/* The survey station over Amman: a range ring expanding outward, the way a
+   total station's reading radiates from an occupied point. */
+@keyframes station-ping {
+  0%   { transform: scale(0.4); opacity: 0.55; }
+  70%  { transform: scale(2.6); opacity: 0; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+.station-ping {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: station-ping 3.6s var(--ease-decelerate) infinite;
+}
+
+/* The triangulation net drawing itself across the sphere, as a network is
+   observed leg by leg rather than appearing at once. */
+@keyframes net-draw {
+  from { stroke-dashoffset: 320; opacity: 0; }
+  to   { stroke-dashoffset: 0; opacity: 1; }
+}
+.net-draw path,
+.net-draw line {
+  stroke-dasharray: 320;
+  animation: net-draw 1.8s var(--ease-decelerate) both;
+}
+
+/*
+ * Skeleton shimmer. A sweep of slightly lighter surface travels across the
+ * placeholder, so a loading screen reads as "content is coming" rather than
+ * "the page is broken". Direction-agnostic: it runs on `transform: translateX`
+ * of an overlay, and the RTL flip is handled by the [dir] rule below so the
+ * sweep always travels with the reading direction.
+ *
+ * Under prefers-reduced-motion the global rule above collapses the duration,
+ * leaving a static tinted block — still a legible placeholder, no movement.
+ */
+@keyframes skeleton-sweep {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-surface-sunken);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--color-surface-default) 70%, transparent),
+    transparent
+  );
+  animation: skeleton-sweep 1.6s var(--ease-standard) infinite;
+}
+[dir='rtl'] .skeleton::after {
+  animation-direction: reverse;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -163,6 +249,17 @@
   }
   /* The plan must still render fully drawn, not frozen mid-stroke. */
   .plan-draw path { stroke-dasharray: none; opacity: 1; }
+
+  /*
+   * The globe must resolve to a READABLE static sphere, not to the animation's
+   * end frame. Left to the blanket rule above every meridian would snap to
+   * scaleX(1) and stack into one circle. Dropping the animation instead lets
+   * each meridian keep the distinct `rx` it is authored with, which is exactly
+   * a still wireframe globe.
+   */
+  .globe-meridian { animation: none; transform: none; }
+  .net-draw path,
+  .net-draw line { stroke-dasharray: none; opacity: 1; }
 }
 
 /* ==========================================================================

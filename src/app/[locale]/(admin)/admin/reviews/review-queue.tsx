@@ -11,12 +11,12 @@ import {
   ThumbsDown,
   ThumbsUp,
   RotateCcw,
-  X,
 } from 'lucide-react'
 
 import { cn } from '@/lib/cn'
 import type { Locale } from '@/i18n/client'
 import { href } from '@/lib/routes'
+import { Modal } from '@/components/ui/modal'
 import { Card, EmptyState, Mono, Tag } from '@/components/ui/primitives'
 import { reviewReportAction, type ReviewResult } from './actions'
 
@@ -81,9 +81,12 @@ export function ReviewQueue({
         <p className="mt-2 text-[length:var(--type-sm)] text-text-muted">{labels.intro}</p>
       </div>
 
-      <p className="rounded-lg border border-status-warning-border bg-status-warning-bg px-4 py-2.5 text-[length:var(--type-xs)] font-medium text-status-warning-fg">
-        {labels.demoNotice}
-      </p>
+      {/* Blank once the queue is backed by Postgres — the page decides. */}
+      {labels.demoNotice && (
+        <p className="rounded-lg border border-status-warning-border bg-status-warning-bg px-4 py-2.5 text-[length:var(--type-xs)] font-medium text-status-warning-fg">
+          {labels.demoNotice}
+        </p>
+      )}
 
       {notice && (
         <p
@@ -210,33 +213,18 @@ function ReviewDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-[1300] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-primary-950/60 backdrop-blur-[2px]" onClick={onClose} aria-hidden />
-      <Card
-        role="dialog"
-        aria-modal="true"
-        aria-label={labels.reviewTitle}
-        className="relative z-10 w-full max-w-lg p-6"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-[length:var(--type-xl)] font-semibold text-text-primary">
-              {labels.reviewTitle}
-            </h2>
-            <p className="mt-1 text-[length:var(--type-sm)] text-text-muted">
-              <Mono>{item.orderNumber}</Mono> · {item.memberName}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={labels.close}
-            className="inline-flex size-11 items-center justify-center rounded-full text-text-muted hover:bg-surface-sunken"
-          >
-            <X className="size-4" aria-hidden />
-          </button>
-        </div>
-
+    <Modal
+      open
+      onClose={onClose}
+      title={labels.reviewTitle}
+      subtitle={
+        <>
+          <Mono>{item.orderNumber}</Mono> · {item.memberName}
+        </>
+      }
+      closeLabel={labels.close}
+    >
+      <>
         {issued ? (
           // Approval issued: show the verification code and a link that opens
           // the public verify page (which renders the QR).
@@ -338,7 +326,7 @@ function ReviewDialog({
             </div>
           </>
         )}
-      </Card>
-    </div>
+      </>
+    </Modal>
   )
 }

@@ -163,6 +163,44 @@ export function Mono({ children, className }: { children: ReactNode; className?:
   )
 }
 
+/* ---------------------------------------------------------------- skeleton */
+
+/**
+ * Loading placeholder.
+ *
+ * A skeleton that mirrors the SHAPE of the content it replaces beats a centred
+ * spinner: the layout is already in its final position, so nothing jumps when
+ * the data lands (no CLS), and the wait reads as progress rather than a hang.
+ * ui-ux-pro-max §3 `progressive-loading`, §7 `loading-states`.
+ *
+ * Hidden from assistive tech — a screen reader should hear the route's loading
+ * announcement, not a dozen meaningless boxes. The `.skeleton` class carries
+ * the shimmer and collapses to a static block under prefers-reduced-motion.
+ */
+export function Skeleton({ className }: { className?: string }) {
+  return <div aria-hidden className={cn('skeleton rounded-md', className)} />
+}
+
+/**
+ * Full-page loading shell used by route-level `loading.tsx` files.
+ *
+ * `role="status"` + `aria-label` gives non-visual users the one announcement
+ * that matters while the skeleton carries the visual story.
+ */
+export function LoadingShell({
+  label,
+  children,
+}: {
+  label: string
+  children: ReactNode
+}) {
+  return (
+    <div role="status" aria-label={label} aria-live="polite">
+      {children}
+    </div>
+  )
+}
+
 /* -------------------------------------------------------------- empty state */
 
 export function EmptyState({

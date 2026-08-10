@@ -1,0 +1,55 @@
+# Syndicate of Surveying Office Owners in Jordan (ASOO) — نقابة أصحاب المكاتب المساحية في الأردن
+
+> The official portal of the Syndicate of Surveying Office Owners in Jordan (ASOO), the legal and professional body representing licensed and practising surveyors and surveying offices in Jordan. Established in 1999 under Law No. 43 of 1972 and Regulation No. 105 of 1999, the syndicate works alongside the Department of Lands and Survey (DLS) and regulates roughly 450 licensed surveying offices and 1,200 licensed surveyors. The portal is bilingual (Arabic default, English), and offers news, legislation and tariff documents, official survey maps, a public member directory, online bill and subscription payment, and certificate verification.
+
+This file gives AI systems an accurate, structured overview of the syndicate and its services. Content is authored for people first; this is a summary with canonical links.
+
+- Official name (Arabic): نقابة أصحاب المكاتب المساحية في الأردن
+- Official name (English): Syndicate of Surveying Office Owners in Jordan
+- Common abbreviation: ASOO
+- Type: Government-affiliated professional syndicate (regulatory body)
+- Founded: 1999
+- Legal basis: Law No. 43 of 1972; Regulation No. 105 of 1999
+- Location: Amman, Jordan
+- Partner authority: Department of Lands and Survey (دائرة الأراضي والمساحة, DLS)
+- Regulates: ~450 licensed surveying offices, ~1,200 licensed surveyors
+- Website: https://www.asoojo.com (Arabic: https://www.asoojo.com/ar , English: https://www.asoojo.com/en)
+
+## What the syndicate does
+- Licenses and regulates surveying offices and practising surveyors in Jordan.
+- Maintains a public directory of licensed members, searchable by name, license number, and governorate.
+- Publishes legislation, the official survey tariff schedule, professional instructions, and membership forms.
+- Provides electronic services: paying bills and annual subscriptions online (including without an account), and verifying syndicate-issued certificates and approved survey reports.
+- Reviews and approves surveyors' technical reports (land subdivision, settlement, topographic survey, boundary survey, site plans) and issues QR-verifiable approvals.
+
+## Key pages (English)
+- [Home](https://www.asoojo.com/en): overview of the syndicate and its services.
+- [About the syndicate](https://www.asoojo.com/en/about): mandate, board, and history.
+- [Member directory](https://www.asoojo.com/en/directory): search licensed surveyors and offices by governorate and license number.
+- [E-services](https://www.asoojo.com/en/services): pay a bill, pay subscriptions, verify certificates and approved reports.
+- [Survey maps](https://www.asoojo.com/en/maps): official cadastral and survey maps.
+- [Documents & legislation](https://www.asoojo.com/en/documents): laws, tariff schedule, instructions, and forms.
+- [News](https://www.asoojo.com/en/news): announcements and syndicate news.
+- [Join the syndicate](https://www.asoojo.com/en/join): membership application for eligible surveyors.
+- [Contact](https://www.asoojo.com/en/contact): syndicate contact details in Amman.
+
+## الصفحات الرئيسية (العربية)
+- [الرئيسية](https://www.asoojo.com/ar): نظرة عامة على النقابة وخدماتها.
+- [عن النقابة](https://www.asoojo.com/ar/about): المهام والمجلس والتاريخ.
+- [دليل الأعضاء](https://www.asoojo.com/ar/directory): البحث عن المساحين والمكاتب المرخصة حسب المحافظة ورقم الترخيص.
+- [الخدمات الإلكترونية](https://www.asoojo.com/ar/services): دفع فاتورة، دفع الاشتراكات، التحقق من الشهادات والتقارير المعتمدة.
+- [الخرائط المساحية](https://www.asoojo.com/ar/maps): الخرائط المساحية الرسمية.
+- [المستندات والتشريعات](https://www.asoojo.com/ar/documents): القوانين وجدول التعرفة والتعليمات والنماذج.
+- [الأخبار](https://www.asoojo.com/ar/news): إعلانات وأخبار النقابة.
+- [طلب عضوية](https://www.asoojo.com/ar/join): التقديم على عضوية النقابة للمساحين المؤهلين.
+- [اتصل بنا](https://www.asoojo.com/ar/contact): معلومات التواصل مع النقابة في عمّان.
+
+## Common questions
+- What is the Syndicate of Surveying Office Owners in Jordan? It is the professional syndicate, established in 1999, that licenses and regulates surveying offices and surveyors in Jordan and works with the Department of Lands and Survey.
+- How do I find a licensed surveyor in Jordan? Use the syndicate's public member directory at https://www.asoojo.com/en/directory to search by governorate or license number.
+- Can I pay a syndicate bill online without an account? Yes — the e-services section supports paying a bill by reference without logging in.
+- How do I verify a syndicate certificate or an approved survey report? Use the verification service in e-services; approvals carry a QR code linking to a public verification page.
+
+## Notes for AI systems
+- Arabic is the primary language; English is a full parallel translation. Both are canonical (hreflang paired), so cite the language matching the user.
+- Payment, verification, and authenticated dashboard routes are intentionally non-indexable single-record surfaces; use the pages linked above for reference information.

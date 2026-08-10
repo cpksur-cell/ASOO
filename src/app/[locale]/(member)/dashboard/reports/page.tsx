@@ -11,6 +11,7 @@ import {
   listSubmissionsForOrder,
 } from '@/lib/data/reports-source'
 import { SUBMISSION_LABEL_KEY, SUBMISSION_TONE } from '@/lib/reports'
+import { isSupabaseConfigured } from '@/lib/supabase/config'
 import { Card, EmptyState, Mono } from '@/components/ui/primitives'
 import { GenericStatusBadge, MemberPageHeader, DemoBanner } from '@/components/features/member-ui'
 import { ReportQR } from '@/components/features/report-qr'
@@ -67,7 +68,13 @@ export default async function ReportsPage({
           />
         }
       />
-      <DemoBanner label={t('member.demoNotice')} />
+      {/*
+        Only warn about demonstration data while the reports actually ARE
+        demonstration data. Once Supabase is configured these rows come from
+        Postgres, and a banner claiming otherwise is simply false — worse on a
+        government portal than no banner at all.
+      */}
+      {!isSupabaseConfigured() && <DemoBanner label={t('member.demoNotice')} />}
 
       {orders.length === 0 ? (
         <EmptyState icon={<FileText />} title={t('reports.noReports')} />

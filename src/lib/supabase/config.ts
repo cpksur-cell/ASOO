@@ -17,6 +17,27 @@ export function isSupabaseConfigured(): boolean {
   )
 }
 
+/**
+ * Reduce a configured Supabase URL to its ORIGIN.
+ *
+ * The dashboard surfaces more than one URL, and the REST endpoint
+ * (`https://<ref>.supabase.co/rest/v1/`) is an easy one to copy by mistake.
+ * supabase-js appends `/rest/v1` itself, so passing that value produces
+ * `/rest/v1/rest/v1/<table>` and every single query fails with an opaque
+ * `PGRST125: Invalid path specified in request URL` — which looks like a
+ * broken schema rather than a mis-pasted variable. Normalising here makes both
+ * forms work and removes a genuinely nasty hour of debugging.
+ */
+function normalizeSupabaseUrl(raw: string): string {
+  try {
+    return new URL(raw).origin
+  } catch {
+    // Not parseable as a URL — hand it back untouched so the client library
+    // raises its own, clearer error about the malformed value.
+    return raw
+  }
+}
+
 /** Reads the required server env, throwing a clear error if half-configured. */
 export function requireSupabaseServerEnv(): { url: string; serviceRoleKey: string } {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -27,5 +48,5 @@ export function requireSupabaseServerEnv(): { url: string; serviceRoleKey: strin
         'SUPABASE_SERVICE_ROLE_KEY. See docs/11-supabase.md.',
     )
   }
-  return { url, serviceRoleKey }
+  return { url: normalizeSupabaseUrl(url), serviceRoleKey }
 }

@@ -5,6 +5,7 @@ import { createTranslator, getDictionary, isLocale, type Locale } from '@/i18n/c
 import { can } from '@/lib/auth/server'
 import { href } from '@/lib/routes'
 import { getOrder, listReviewQueue } from '@/lib/data/reports-source'
+import { isSupabaseConfigured } from '@/lib/supabase/config'
 import { members as seedMembers } from '@/lib/data/seed'
 
 import { ReviewQueue, type ReviewLabels } from './review-queue'
@@ -49,7 +50,9 @@ export default async function AdminReviewsPage({
   const labels: ReviewLabels = {
     title: t('reports.queueTitle'),
     intro: t('reports.queueIntro'),
-    demoNotice: t('admin.demoDataNotice'),
+    // Empty once the queue reads from Postgres — see the note on the member
+    // reports page. The component omits the banner entirely when this is blank.
+    demoNotice: isSupabaseConfigured() ? '' : t('admin.demoDataNotice'),
     empty: t('reports.queueEmpty'),
     member: t('reports.member'),
     order: t('reports.order'),

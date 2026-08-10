@@ -59,7 +59,20 @@
     "language": "Language",
     "switchToEnglish": "العربية",
     "page": "Page",
-    "of": "of"
+    "of": "of",
+    "globeLabel": "An interactive globe showing Jordan's twelve governorates as survey control stations, linked by a triangulation network centred on Amman. Drag to rotate.",
+    "globeHint": "Drag to rotate"
+  },
+  "errorState": {
+    "title": "Something went wrong",
+    "body": "We couldn't load this page. This is usually temporary — please try again.",
+    "retry": "Try again",
+    "backHome": "Back to home",
+    "reference": "Reference",
+    "dashboardTitle": "Couldn't load your dashboard",
+    "dashboardBody": "Your data could not be retrieved right now. Your information is safe — please try again.",
+    "adminTitle": "Couldn't load this admin screen",
+    "adminBody": "The request failed before any change was made. Please try again."
   },
   "home": {
     "heroCtaDirectory": "Find a member",
@@ -132,6 +145,26 @@
     "assuranceSecure": "Secure encrypted payment",
     "assuranceReceipt": "Immediate official receipt",
     "assuranceAlways": "Available around the clock"
+  },
+  "pay": {
+    "title": "Pay a bill",
+    "intro": "Pay your syndicate bills and annual subscriptions electronically through eFAWATEERcom, Jordan's national e-payment service. No account on this portal is required.",
+    "efawateercomTitle": "Pay through eFAWATEERcom",
+    "efawateercomBody": "The syndicate is a registered biller on eFAWATEERcom. Pay from your bank's app or website, an eFAWATEERcom kiosk, or the eFAWATEERcom app.",
+    "billerLabel": "Biller name on eFAWATEERcom",
+    "billerName": "Syndicate of Surveying Office Owners",
+    "stepsTitle": "How to pay",
+    "step1": "Open your bank app or the eFAWATEERcom service and choose “Pay bills”.",
+    "step2": "Under the “Associations & Unions” category, select the Syndicate of Surveying Office Owners.",
+    "step3": "Enter your membership number or the invoice reference from the syndicate.",
+    "step4": "Review the amount, confirm, and keep the eFAWATEERcom receipt.",
+    "openButton": "Go to eFAWATEERcom",
+    "needTitle": "What you'll need",
+    "need1": "Your membership number, or the invoice reference printed on the bill from the syndicate.",
+    "need2": "A Jordanian bank account or card enrolled with eFAWATEERcom.",
+    "onboardingTitle": "Instant in-portal payment is on the way",
+    "onboardingBody": "Viewing and paying an invoice directly on this page will switch on once the syndicate's eFAWATEERcom biller account is fully activated. Until then, please use the eFAWATEERcom channels above.",
+    "referenceNote": "Have an invoice reference? You'll enter that number in eFAWATEERcom to find and settle your bill."
   },
   "contact": {
     "title": "Contact Us",

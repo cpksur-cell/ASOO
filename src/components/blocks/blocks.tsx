@@ -1,8 +1,7 @@
-import Image from 'next/image'
 import Link from 'next/link'
 import { ArrowLeft, Compass, ExternalLink, Search } from 'lucide-react'
 
-import { createTranslator, getDictionary, type Locale } from '@/i18n/config'
+import { createTranslator, getDictionary, localeDirection, type Locale } from '@/i18n/config'
 import { href } from '@/lib/routes'
 import { cn } from '@/lib/cn'
 import { getRepository } from '@/lib/data'
@@ -10,6 +9,9 @@ import type { BlockText, LayoutBlock } from '@/lib/data'
 import { parseBlockConfig } from '@/lib/cms/block-schemas'
 import { Card, SectionHeading } from '@/components/ui/primitives'
 import { CadastralPlan } from '@/components/ui/cadastral-plan'
+import { InteractiveGlobe, type GlobeMarker } from '@/components/ui/interactive-globe'
+import { JORDAN_GOVERNORATES, ORIGIN_CODE, TRIANGULATION_LEGS } from '@/lib/geo/jordan'
+import { governorates as seedGovernorates } from '@/lib/data/seed'
 import { Reveal, RevealGroup, RevealItem } from '@/components/ui/reveal'
 import { ButtonLink } from '@/components/ui/button'
 import { DocumentCard, GovLinkCard, NewsCard, ServiceCard } from '@/components/features/cards'
@@ -34,6 +36,17 @@ function Hero({ block, locale }: BlockProps) {
   const cfg = parseBlockConfig('hero', block.config)
   if (!cfg) return null
   const text = block.text
+  const t = createTranslator(getDictionary(locale))
+
+  /*
+   * Station labels come from the governorate records that already back the
+   * directory, so the globe cannot drift out of step with the rest of the site
+   * and no place name is duplicated as a literal here (CLAUDE.md §9).
+   */
+  const globeMarkers: GlobeMarker[] = JORDAN_GOVERNORATES.map((point) => ({
+    ...point,
+    label: seedGovernorates.find((g) => g.code === point.code)?.name[locale] ?? point.code,
+  }))
 
   return (
     <section className="relative -mt-px overflow-hidden border-b border-border-subtle bg-surface-default">
@@ -90,22 +103,30 @@ function Hero({ block, locale }: BlockProps) {
             </div>
           </Reveal>
 
-          {/* Hero visual — brings the page to life instead of text-only. */}
+          {/*
+            Hero visual — a geodetic globe rather than a photograph.
+
+            It replaces a 990 KB stock image with inline SVG: nothing to
+            download, nothing to lay out late, so the largest paint is the
+            heading itself. It also says what the photo could not — that this
+            syndicate's members measure the Earth, and that the network is
+            occupied from Amman.
+          */}
           <Reveal className="relative hidden lg:block lg:w-[44%] lg:shrink-0">
-            <div className="relative overflow-hidden rounded-2xl shadow-xl">
-              <Image
-                src="/images/hero-amman-surveying.png"
-                alt=""
-                width={640}
-                height={480}
-                className="size-full object-cover"
-                priority
+            <div className="relative mx-auto aspect-square w-full max-w-[30rem]">
+              <InteractiveGlobe
+                markers={globeMarkers}
+                legs={TRIANGULATION_LEGS}
+                originCode={ORIGIN_CODE}
+                label={t('common.globeLabel')}
+                dir={localeDirection[locale]}
               />
-              {/* Glass overlay strip with accent rule */}
-              <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-transparent via-surface-rule to-transparent" aria-hidden />
+              {/* The affordance has to be stated — a canvas gives no hint that
+                  it can be grabbed. */}
+              <p className="pointer-events-none absolute inset-x-0 bottom-0 text-center text-[length:var(--type-xs)] text-text-muted">
+                {t('common.globeHint')}
+              </p>
             </div>
-            {/* Decorative frame accent */}
-            <div className="absolute -bottom-3 -end-3 -z-10 h-full w-full rounded-2xl border-2 border-accent-200 opacity-40" aria-hidden />
           </Reveal>
         </div>
       </div>

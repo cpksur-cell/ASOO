@@ -2,11 +2,11 @@
 
 import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, Paperclip, Plus, Upload, X } from 'lucide-react'
+import { CheckCircle2, Paperclip, Plus, Upload } from 'lucide-react'
 
 import { cn } from '@/lib/cn'
 import { MAX_REPORT_BYTES, fileTypeFromName } from '@/lib/reports'
-import { Card } from '@/components/ui/primitives'
+import { Modal } from '@/components/ui/modal'
 import { submitReportAction, type SubmitResult } from './actions'
 
 interface UploaderLabels {
@@ -125,40 +125,19 @@ export function ReportUploader({
         </p>
       )}
 
-      {open && (
-        <div className="fixed inset-0 z-[1300] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-primary-950/60 backdrop-blur-[2px]"
-            onClick={() => setOpen(false)}
-            aria-hidden
-          />
-          <Card
-            role="dialog"
-            aria-modal="true"
-            aria-label={labels.uploadTitle}
-            className="relative z-10 w-full max-w-lg p-6 text-start"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <h2 className="text-[length:var(--type-xl)] font-semibold text-text-primary">
-                {labels.uploadTitle}
-              </h2>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                aria-label={labels.cancel}
-                className="inline-flex size-11 items-center justify-center rounded-full text-text-muted hover:bg-surface-sunken"
-              >
-                <X className="size-4" aria-hidden />
-              </button>
-            </div>
-
-            <form
-              className="mt-5 space-y-4"
-              onSubmit={(e) => {
-                e.preventDefault()
-                submit()
-              }}
-            >
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title={labels.uploadTitle}
+        closeLabel={labels.cancel}
+      >
+        <form
+          className="mt-5 space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            submit()
+          }}
+        >
               <div>
                 <label
                   htmlFor="report-order"
@@ -246,10 +225,8 @@ export function ReportUploader({
                   {pending ? labels.submitting : labels.submit}
                 </button>
               </div>
-            </form>
-          </Card>
-        </div>
-      )}
+        </form>
+      </Modal>
     </div>
   )
 }

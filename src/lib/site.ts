@@ -11,8 +11,18 @@
  * syndicate before launch. See design/content-inventory.md.
  */
 
-export const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+/**
+ * Absolute site origin, used for canonical URLs, hreflang, Open Graph, JSON-LD,
+ * the sitemap, and robots. It MUST be the real production origin in production —
+ * a localhost value here silently poisons every canonical and hreflang tag and
+ * gets localhost indexed. So the default is the production domain, not
+ * localhost: set NEXT_PUBLIC_SITE_URL to override (e.g. a preview deployment or
+ * `http://localhost:3000` for local absolute-URL testing). Trailing slash is
+ * stripped so `${siteUrl}/path` never doubles up.
+ */
+export const siteUrl = (
+  process.env.NEXT_PUBLIC_SITE_URL ?? 'https://www.asoojo.com'
+).replace(/\/+$/, '')
 
 export const contact = {
   /** UNVERIFIED — placeholder from the prototype. */

@@ -22,11 +22,17 @@ export default async function PublicLayout({
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'GovernmentOrganization',
+    // Stable entity id (locale-independent) so both locale pages describe the
+    // SAME organization rather than two separate entities.
+    '@id': `${siteUrl}/#organization`,
     name: dict.site.fullName,
     alternateName: dict.site.name,
     url: `${siteUrl}/${locale}`,
+    logo: `${siteUrl}/images/Main%20Logo.png`,
     foundingDate: '1999',
     description: dict.site.description,
+    areaServed: { '@type': 'Country', name: 'Jordan' },
+    knowsLanguage: ['ar', 'en'],
     address: {
       '@type': 'PostalAddress',
       addressLocality: 'Amman',

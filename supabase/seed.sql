@@ -129,11 +129,16 @@ insert into report_submissions (
    'مخطط الإفراز المبدئي.', '2026-01-20T00:00:00Z')
 on conflict (id) do nothing;
 
--- Review row for the approved submission (append-only history)
-insert into report_reviews (submission_id, reviewer_id, reviewer_role, decision, comments, created_at) values
-  ('b0000000-0000-4000-8000-000000000001', 'mock-uid-membership_officer',
-   'membership_officer', 'approved', 'مطابق للأصول الفنية.', '2026-01-10T00:00:00Z')
-on conflict do nothing;
+-- Review row for the approved submission (append-only history).
+-- report_reviews has ON UPDATE/DELETE rules, so ON CONFLICT is not permitted on
+-- it — guard with WHERE NOT EXISTS to stay idempotent instead.
+insert into report_reviews (submission_id, reviewer_id, reviewer_role, decision, comments, created_at)
+select 'b0000000-0000-4000-8000-000000000001', 'mock-uid-membership_officer',
+       'membership_officer', 'approved', 'مطابق للأصول الفنية.', '2026-01-10T00:00:00Z'
+where not exists (
+  select 1 from report_reviews
+  where submission_id = 'b0000000-0000-4000-8000-000000000001' and decision = 'approved'
+);
 
 -- ---------------------------------------------------------------------------
 -- Approval (report-demo.ts DEMO_APPROVALS)

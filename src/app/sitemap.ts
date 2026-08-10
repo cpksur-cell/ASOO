@@ -23,10 +23,16 @@ const staticPaths = [
 ]
 
 function alternates(path: string) {
+  const suffix = path ? `/${path}` : ''
   return {
-    languages: Object.fromEntries(
-      locales.map((l) => [l === 'ar' ? 'ar-JO' : 'en', `${siteUrl}/${l}${path ? `/${path}` : ''}`]),
-    ),
+    languages: {
+      ...Object.fromEntries(
+        locales.map((l) => [l === 'ar' ? 'ar-JO' : 'en', `${siteUrl}/${l}${suffix}`]),
+      ),
+      // x-default fallback — Arabic is the primary audience. Keeps the sitemap's
+      // hreflang cluster consistent with the <head> alternates in generateMetadata.
+      'x-default': `${siteUrl}/ar${suffix}`,
+    },
   }
 }
 

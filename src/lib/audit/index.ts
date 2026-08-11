@@ -101,9 +101,32 @@ export async function withAudit<T>(
         ip_address: ip,
         user_agent: userAgent,
       })
-    // A mutation without its audit record is not an acceptable outcome for a
-    // government system — surface the failure to the caller.
-    if (error) throw new AuditError(`Audit write failed: ${error.message}`)
+    /*
+     * A mutation without its audit record is not an acceptable outcome for a
+     * government system.
+     *
+     * KNOWN GAP, and it is real rather than theoretical: `run()` has ALREADY
+     * committed by the time this executes, because supabase-js issues each
+     * statement over HTTP and cannot hold a transaction open across them. So a
+     * failure here means the change happened and the record did not — this
+     * exact case was hit in testing when a foreign key rejected the audit row
+     * (fixed in 0009) while the member update had already gone through.
+     *
+     * Until each mutation moves behind a Postgres function that writes the
+     * change and its audit row in ONE transaction, the honest behaviour is to
+     * fail loudly: throw so the caller reports failure, and log with enough
+     * detail to reconstruct what was applied without a record.
+     */
+    if (error) {
+      console.error('[audit] FAILED TO RECORD A COMPLETED MUTATION', {
+        action: ctx.action,
+        entityType: ctx.entityType,
+        entityId: ctx.entityId,
+        actor: session.uid,
+        cause: error.message,
+      })
+      throw new AuditError(`Audit write failed: ${error.message}`)
+    }
     return result
   }
 

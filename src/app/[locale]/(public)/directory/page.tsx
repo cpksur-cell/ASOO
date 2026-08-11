@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { SearchX } from 'lucide-react'
 
 import { createTranslator, getDictionary, isLocale, type Locale } from '@/i18n/config'
-import { getRepository } from '@/lib/data'
+import { listGovernorates, searchDirectory } from '@/lib/data/members-source'
 import { href } from '@/lib/routes'
 import { dlsRegistryUrl } from '@/lib/site'
 import { Breadcrumbs } from '@/components/layout/breadcrumbs'
@@ -45,10 +45,9 @@ export default async function DirectoryPage({
   const { q = '', governorate = 'all' } = await searchParams
   const t = createTranslator(getDictionary(typed))
 
-  const repo = getRepository()
   const [governorates, results] = await Promise.all([
-    repo.listGovernorates(typed),
-    repo.searchDirectory({ q, governorate }, typed),
+    listGovernorates(typed),
+    searchDirectory({ q, governorate }, typed),
   ])
 
   return (

@@ -127,7 +127,9 @@
     "emptyBody": "Try checking the spelling, clearing the governorate filter, or searching the official Department of Lands and Survey registry.",
     "emptyCta": "Official surveyors registry",
     "inGovernorate": "Members in {governorate}",
-    "notFound": "This member could not be found."
+    "notFound": "This member could not be found.",
+    "membershipNumber": "Membership number",
+    "notRecorded": "Not recorded"
   },
   "services": {
     "title": "E-Services",

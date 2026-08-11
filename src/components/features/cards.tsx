@@ -241,7 +241,7 @@ export function MemberCard({
       </div>
 
       <h3 className="mt-4 text-[length:var(--type-lg)] font-semibold leading-snug text-text-primary">
-        <Link href={href(locale, `directory/${member.licenseNumber}`)}>
+        <Link href={href(locale, `directory/${member.slug}`)}>
           <span className="absolute inset-0" aria-hidden />
           {member.fullName}
         </Link>
@@ -254,19 +254,30 @@ export function MemberCard({
       )}
 
       <dl className="mt-4 flex-1 space-y-2 text-[length:var(--type-sm)]">
+        {/*
+          Show whichever identifier the syndicate actually holds. A member from
+          the roster has a membership number but no DLS licence yet, and
+          labelling a membership number as a licence number would be wrong.
+        */}
         <div className="flex items-center gap-2">
-          <dt className="text-text-muted">{t('directory.licenseNumber')}:</dt>
+          <dt className="text-text-muted">
+            {member.licenseNumber ? t('directory.licenseNumber') : t('directory.membershipNumber')}:
+          </dt>
           <dd>
-            <Mono className="font-medium text-text-primary">{member.licenseNumber}</Mono>
+            <Mono className="font-medium text-text-primary">
+              {member.licenseNumber ?? member.membershipNumber}
+            </Mono>
           </dd>
         </div>
-        <div className="flex items-center gap-2">
-          <dt className="sr-only">{t('directory.governorate')}</dt>
-          <dd className="inline-flex items-center gap-1.5 text-text-secondary">
-            <MapPin className="size-4 text-text-muted" aria-hidden />
-            {member.governorate.name}
-          </dd>
-        </div>
+        {member.governorate && (
+          <div className="flex items-center gap-2">
+            <dt className="sr-only">{t('directory.governorate')}</dt>
+            <dd className="inline-flex items-center gap-1.5 text-text-secondary">
+              <MapPin className="size-4 text-text-muted" aria-hidden />
+              {member.governorate.name}
+            </dd>
+          </div>
+        )}
       </dl>
 
       {member.specializations.length > 0 && (

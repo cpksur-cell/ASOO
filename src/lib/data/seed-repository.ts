@@ -38,6 +38,8 @@ function toMember(m: (typeof seed.members)[number], locale: Locale): DirectoryMe
   const gov = seed.governorates.find((g) => g.code === m.governorateCode)!
   return {
     id: m.id,
+    // Seeded members all carry a licence, so it doubles as the URL slug.
+    slug: m.licenseNumber,
     licenseNumber: m.licenseNumber,
     membershipNumber: m.membershipNumber,
     status: m.status,

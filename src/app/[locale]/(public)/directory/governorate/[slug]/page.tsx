@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { SearchX } from 'lucide-react'
 
 import { createTranslator, getDictionary, isLocale, locales, type Locale } from '@/i18n/config'
-import { getRepository } from '@/lib/data'
+import { listGovernorates, searchDirectory } from '@/lib/data/members-source'
 import { href } from '@/lib/routes'
 import { dlsRegistryUrl } from '@/lib/site'
 import { governorates as seedGovernorates } from '@/lib/data/seed'
@@ -18,7 +18,7 @@ export function generateStaticParams() {
 }
 
 async function resolve(locale: Locale, slug: string) {
-  const governorates = await getRepository().listGovernorates(locale)
+  const governorates = await listGovernorates(locale)
   return governorates.find((g) => g.code === slug) ?? null
 }
 
@@ -51,7 +51,7 @@ export default async function GovernoratePage({
   if (!gov) notFound()
 
   const t = createTranslator(getDictionary(typed))
-  const results = await getRepository().searchDirectory({ governorate: slug }, typed)
+  const results = await searchDirectory({ governorate: slug }, typed)
   const title = t('directory.inGovernorate', { governorate: gov.name })
 
   return (

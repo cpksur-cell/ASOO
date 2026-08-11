@@ -28,11 +28,25 @@ export type MemberStatus =
 
 export interface DirectoryMember {
   id: string
-  licenseNumber: string
+  /**
+   * The identifier this member is addressed by in the URL.
+   *
+   * Normally the DLS licence number. For a member loaded from the syndicate's
+   * roster the licence is not yet recorded, so it falls back to the membership
+   * number — a member must still be reachable at a stable address.
+   */
+  slug: string
+  /**
+   * DLS-issued. NULL when the syndicate holds the member on its roster but has
+   * not recorded their licence number — see supabase/migrations/0007.
+   */
+  licenseNumber: string | null
   membershipNumber: string
   status: MemberStatus
-  governorate: Governorate
-  category: string
+  /** NULL while the member's governorate is unknown. */
+  governorate: Governorate | null
+  /** NULL while the member's category is unknown. */
+  category: string | null
   fullName: string
   officeName: string | null
   specializations: string[]

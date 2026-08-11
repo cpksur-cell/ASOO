@@ -5,7 +5,7 @@ import { BadgeCheck, Building2, CalendarDays, Mail, MapPin, Phone } from 'lucide
 
 import { createTranslator, getDictionary, isLocale, type Locale } from '@/i18n/config'
 import { formatDate } from '@/i18n/format'
-import { getRepository } from '@/lib/data'
+import { getMemberBySlug } from '@/lib/data/members-source'
 import { href } from '@/lib/routes'
 import { siteUrl } from '@/lib/site'
 import { Breadcrumbs } from '@/components/layout/breadcrumbs'
@@ -21,12 +21,14 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale, license } = await params
   if (!isLocale(locale)) return {}
-  const member = await getRepository().getMemberByLicense(license, locale)
+  const member = await getMemberBySlug(license, locale)
   if (!member) return {}
 
   return {
     title: member.fullName,
-    description: `${member.officeName ?? member.fullName} — ${member.governorate.name}`,
+    description: [member.officeName ?? member.fullName, member.governorate?.name]
+      .filter(Boolean)
+      .join(' — '),
     alternates: { canonical: href(locale, `directory/${license}`) },
   }
 }
@@ -40,7 +42,7 @@ export default async function MemberPage({
   if (!isLocale(locale)) notFound()
   const typed: Locale = locale
 
-  const member = await getRepository().getMemberByLicense(license, typed)
+  const member = await getMemberBySlug(license, typed)
   if (!member) notFound()
 
   const t = createTranslator(getDictionary(typed))
@@ -52,9 +54,19 @@ export default async function MemberPage({
     '@type': 'ProfessionalService',
     name: member.officeName ?? member.fullName,
     url: `${siteUrl}${href(typed, `directory/${license}`)}`,
-    areaServed: member.governorate.name,
-    identifier: member.licenseNumber,
-    address: { '@type': 'PostalAddress', addressLocality: member.governorate.name, addressCountry: 'JO' },
+    // Only assert what is actually known — structured data claiming an unknown
+    // area or identifier is worse than omitting the property.
+    ...(member.governorate
+      ? {
+          areaServed: member.governorate.name,
+          address: {
+            '@type': 'PostalAddress',
+            addressLocality: member.governorate.name,
+            addressCountry: 'JO',
+          },
+        }
+      : { address: { '@type': 'PostalAddress', addressCountry: 'JO' } }),
+    identifier: member.licenseNumber ?? member.membershipNumber,
     ...(member.directoryPhone ? { telephone: member.directoryPhone } : {}),
   }
 
@@ -64,7 +76,15 @@ export default async function MemberPage({
         locale={typed}
         items={[
           { label: t('directory.title'), path: 'directory' },
-          { label: member.governorate.name, path: `directory/governorate/${member.governorate.code}` },
+          // The governorate crumb only exists when the governorate is known.
+          ...(member.governorate
+            ? [
+                {
+                  label: member.governorate.name,
+                  path: `directory/governorate/${member.governorate.code}`,
+                },
+              ]
+            : []),
           { label: member.fullName },
         ]}
       />
@@ -102,12 +122,15 @@ export default async function MemberPage({
             {t('directory.office')}
           </h2>
           <dl className="mt-5 grid gap-5 sm:grid-cols-2">
+            {/* Label the identifier for what it actually is. */}
             <div>
               <dt className="text-[length:var(--type-sm)] text-text-muted">
-                {t('directory.licenseNumber')}
+                {member.licenseNumber
+                  ? t('directory.licenseNumber')
+                  : t('directory.membershipNumber')}
               </dt>
               <dd className="mt-1 text-[length:var(--type-base)] font-semibold text-text-primary">
-                <Mono>{member.licenseNumber}</Mono>
+                <Mono>{member.licenseNumber ?? member.membershipNumber}</Mono>
               </dd>
             </div>
             <div>
@@ -115,13 +138,17 @@ export default async function MemberPage({
                 {t('directory.governorate')}
               </dt>
               <dd className="mt-1">
-                <Link
-                  href={href(typed, `directory/governorate/${member.governorate.code}`)}
-                  className="inline-flex items-center gap-1.5 font-medium text-text-brand hover:underline"
-                >
-                  <MapPin className="size-4" aria-hidden />
-                  {member.governorate.name}
-                </Link>
+                {member.governorate ? (
+                  <Link
+                    href={href(typed, `directory/governorate/${member.governorate.code}`)}
+                    className="inline-flex items-center gap-1.5 font-medium text-text-brand hover:underline"
+                  >
+                    <MapPin className="size-4" aria-hidden />
+                    {member.governorate.name}
+                  </Link>
+                ) : (
+                  <span className="text-text-muted">{t('directory.notRecorded')}</span>
+                )}
               </dd>
             </div>
             <div>
@@ -137,7 +164,11 @@ export default async function MemberPage({
               <dt className="text-[length:var(--type-sm)] text-text-muted">
                 {t('directory.office')}
               </dt>
-              <dd className="mt-1 text-text-primary">{member.category}</dd>
+              <dd className="mt-1 text-text-primary">
+                {member.category ?? (
+                  <span className="text-text-muted">{t('directory.notRecorded')}</span>
+                )}
+              </dd>
             </div>
           </dl>
 

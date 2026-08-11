@@ -184,6 +184,7 @@ export function InteractiveGlobe({
   const frame = useRef(0)
   const palette = useRef<Palette | null>(null)
   const reduced = useRef(false)
+  const onScreen = useRef(true)
   const box = useRef({ w: 0, h: 0, dpr: 1 })
 
   /** A Fibonacci sphere — the standard way to scatter points evenly. */
@@ -207,10 +208,12 @@ export function InteractiveGlobe({
     const canvas = canvasRef.current
     const ctx = canvas?.getContext('2d')
     const pal = palette.current
-    if (!canvas || !ctx || !pal) return
+
+    // Nothing to paint yet — the driving loop keeps running regardless, so a
+    // late palette or a not-yet-measured box simply skips a frame.
+    if (!canvas || !ctx || !pal || box.current.w === 0 || box.current.h === 0) return
 
     const { w, h } = box.current
-    if (w === 0 || h === 0) return
 
     const cx = w / 2
     const cy = h / 2
@@ -284,8 +287,9 @@ export function InteractiveGlobe({
       if (!pa || !pb) continue
       if (pa.z > 0 && pb.z > 0) continue // both on the far side
 
-      // Fade the leg out as it wraps around the limb.
-      const vis = Math.max(0, 1 - Math.max(pa.z, pb.z) / (radius * 0.9))
+      // Fade the leg out as it wraps around the limb. Clamped for the same
+      // reason as the station alpha below.
+      const vis = Math.min(1, Math.max(0, 1 - Math.max(pa.z, pb.z) / (radius * 0.9)))
       if (vis <= 0.02) continue
 
       ctx.beginPath()
@@ -319,7 +323,13 @@ export function InteractiveGlobe({
 
       const isOrigin = m.code === originCode
       const colour = isOrigin ? pal.accent : pal.net
-      const vis = Math.max(0.15, 1 - p.z / (radius * 0.9))
+      /*
+       * CLAMPED. `p.z` is negative on the near face, so the raw expression
+       * exceeds 1 for any station facing the viewer — and an alpha above 1
+       * risks the whole colour string being rejected, which silently drops
+       * every marker. Alpha must stay in [0,1].
+       */
+      const vis = Math.min(1, Math.max(0.15, 1 - p.z / (radius * 0.9)))
 
       // The occupied station radiates a range ring, the way a reading spreads
       // from an instrument set up over a point.
@@ -355,8 +365,12 @@ export function InteractiveGlobe({
     if (origin) toLabel.push({ m: origin, accent: true })
     if (hovered && hovered.code !== originCode) toLabel.push({ m: hovered, accent: false })
 
-    ctx.font =
-      '600 12px var(--font-loaded-arabic, system-ui), system-ui, -apple-system, sans-serif'
+    /*
+     * A canvas font string is NOT CSS: a custom property here is invalid and
+     * the whole declaration is dropped, silently falling back to 10px
+     * sans-serif. The family has to be named literally.
+     */
+    ctx.font = '600 12px "IBM Plex Sans Arabic", system-ui, -apple-system, sans-serif'
     ctx.textBaseline = 'middle'
     ctx.direction = dir
 
@@ -384,8 +398,8 @@ export function InteractiveGlobe({
       ctx.textAlign = 'left'
       ctx.fillText(m.label, bx, by + 7)
     }
-
-    frame.current = requestAnimationFrame(draw)
+    // No self-scheduling: the effect below owns the loop, so `draw` paints one
+    // frame and nothing else. That is what makes it impossible to freeze.
   }, [markers, legs, originCode, dir])
 
   /* ------------------------------------------------------------- effects */
@@ -445,41 +459,62 @@ export function InteractiveGlobe({
     return () => observer.disconnect()
   }, [])
 
-  // Run the loop only while visible — off-screen or background tabs stop.
+  /*
+   * ONE loop that never stops rescheduling itself.
+   *
+   * The obvious design — cancel the frame when the canvas scrolls away and
+   * schedule a new one when it returns — has a nasty failure mode: every
+   * external caller must get the restart exactly right, and any path that
+   * cancels without rescheduling freezes the globe permanently with no error
+   * to show for it. That is precisely what happened here.
+   *
+   * So the loop is unconditional and the *work* is what gets skipped: when the
+   * canvas is off-screen or the tab is in the background, the callback returns
+   * immediately having painted nothing. The saving is the same — no geometry,
+   * no fills — but there is no state machine left to get wrong.
+   */
+  /*
+   * The loop reads the LATEST `draw` from a ref instead of depending on it.
+   *
+   * `draw` is rebuilt whenever its inputs change, and an effect keyed on it
+   * tears the loop down and starts a new one each time. Any hiccup in that
+   * churn — a cleanup landing after the restart, a double-invoked effect in
+   * development — leaves the animation cancelled with a fully-painted canvas
+   * and no error, which is exactly how this failed. Keeping the dependency
+   * list empty means the loop is created once on mount and torn down once on
+   * unmount, and nothing in between can strand it.
+   */
+  const drawRef = useRef(draw)
+  useEffect(() => {
+    drawRef.current = draw
+  }, [draw])
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    let visible = true
-    let onScreen = true
-
-    const update = () => {
-      cancelAnimationFrame(frame.current)
-      if (visible && onScreen) frame.current = requestAnimationFrame(draw)
-    }
-
+    let running = true
     const io = new IntersectionObserver(
       ([entry]) => {
-        onScreen = Boolean(entry?.isIntersecting)
-        update()
+        onScreen.current = Boolean(entry?.isIntersecting)
       },
       { threshold: 0 },
     )
     io.observe(canvas)
 
-    const onVisibility = () => {
-      visible = document.visibilityState === 'visible'
-      update()
+    const tick = () => {
+      if (!running) return
+      if (onScreen.current && document.visibilityState === 'visible') drawRef.current()
+      frame.current = requestAnimationFrame(tick)
     }
-    document.addEventListener('visibilitychange', onVisibility)
+    frame.current = requestAnimationFrame(tick)
 
-    update()
     return () => {
+      running = false
       cancelAnimationFrame(frame.current)
       io.disconnect()
-      document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [draw])
+  }, [])
 
   /* -------------------------------------------------------------- pointer */
 

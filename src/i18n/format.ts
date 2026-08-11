@@ -72,6 +72,14 @@ export function parseMoney(input: string): bigint {
  */
 export function formatDate(date: Date | string, locale: Locale): string {
   const d = typeof date === 'string' ? new Date(date) : date
+  /*
+   * An unparseable value yields an empty string rather than throwing.
+   * `Intl.DateTimeFormat.format` raises RangeError on an Invalid Date, and a
+   * throw inside a server component takes down the ENTIRE page — one member
+   * with a missing join date should not 500 their profile. Callers that care
+   * whether a date exists check for null before calling.
+   */
+  if (Number.isNaN(d.getTime())) return ''
   return new Intl.DateTimeFormat(locale === 'ar' ? 'ar-JO-u-nu-latn' : 'en-GB', {
     year: 'numeric',
     month: 'long',

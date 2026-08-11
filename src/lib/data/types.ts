@@ -53,7 +53,8 @@ export interface DirectoryMember {
   directoryPhone: string | null
   directoryEmail: string | null
   directoryAddress: string | null
-  joinedAt: string
+  /** NULL when the join date is not recorded, as for a roster import. */
+  joinedAt: string | null
 }
 
 export interface PostCategory {

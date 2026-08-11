@@ -156,8 +156,14 @@ export default async function MemberPage({
                 {t('news.published')}
               </dt>
               <dd className="mt-1 inline-flex items-center gap-1.5 text-text-primary">
-                <CalendarDays className="size-4 text-text-muted" aria-hidden />
-                <span data-numeric>{formatDate(member.joinedAt, typed)}</span>
+                {member.joinedAt ? (
+                  <>
+                    <CalendarDays className="size-4 text-text-muted" aria-hidden />
+                    <span data-numeric>{formatDate(member.joinedAt, typed)}</span>
+                  </>
+                ) : (
+                  <span className="text-text-muted">{t('directory.notRecorded')}</span>
+                )}
               </dd>
             </div>
             <div>

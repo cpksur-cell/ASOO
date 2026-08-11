@@ -78,7 +78,9 @@ function mapMember(row: MemberRow, locale: Locale): DirectoryMember {
     directoryPhone: row.directory_phone,
     directoryEmail: row.directory_email,
     directoryAddress: row.directory_address,
-    joinedAt: row.joined_at ?? '',
+    // NOT coerced to '' — an empty string becomes an Invalid Date downstream
+    // and throws inside the formatter, taking the whole page down.
+    joinedAt: row.joined_at,
   }
 }
 

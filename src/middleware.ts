@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
 
 /**
  * Two jobs: locale negotiation, and route gating.
@@ -19,7 +20,6 @@ const LOCALES = ['ar', 'en'] as const
 const DEFAULT_LOCALE = 'ar'
 const LOCALE_COOKIE = 'asoo_locale'
 
-const SESSION_COOKIE = '__session'
 const MOCK_ROLE_COOKIE = 'asoo_mock_role'
 
 /** Path segments that require a session. Checked after the locale prefix. */
@@ -84,7 +84,56 @@ function negotiate(request: NextRequest): string {
   return DEFAULT_LOCALE
 }
 
-export function middleware(request: NextRequest) {
+/**
+ * Refreshes the Supabase session and reports whether one exists.
+ *
+ * Access tokens are short-lived, so something has to exchange the refresh
+ * token before they expire; middleware is the one place in the App Router
+ * allowed to write cookies on every request, which is why the refresh lives
+ * here rather than in a Server Component.
+ *
+ * `getUser()` rather than `getSession()` — the latter trusts the cookie
+ * without verifying it. Even though this layer only decides "redirect to
+ * login or not", asking the weaker question here would put a forgeable
+ * signal into the security model.
+ */
+async function withSession(
+  request: NextRequest,
+  response: NextResponse,
+): Promise<{ response: NextResponse; signedIn: boolean }> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!url || !anonKey) return { response, signedIn: false }
+
+  let next = response
+  const supabase = createServerClient(new URL(url).origin, anonKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll()
+      },
+      setAll(toSet) {
+        for (const { name, value } of toSet) request.cookies.set(name, value)
+        next = NextResponse.next({ request })
+        for (const { name, value, options } of toSet) {
+          next.cookies.set(name, value, options)
+        }
+      },
+    },
+  })
+
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    return { response: next, signedIn: Boolean(user) }
+  } catch {
+    // Auth being unreachable must not take the whole site down; the page-level
+    // check still runs and will refuse anything privileged.
+    return { response: next, signedIn: false }
+  }
+}
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   const locale = LOCALES.find(
@@ -101,13 +150,21 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(url, 307)
   }
 
+  // Refresh on every matched request, not only protected ones — otherwise a
+  // user reading public pages silently expires and is bounced to login the
+  // moment they open their dashboard.
+  const { response, signedIn } = await withSession(request, NextResponse.next({ request }))
+
   const rest = pathname.slice(`/${locale}`.length).replace(/^\//, '')
   const segment = rest.split('/')[0] ?? ''
 
   if (PROTECTED_SEGMENTS.includes(segment)) {
     const hasSession =
-      Boolean(request.cookies.get(SESSION_COOKIE)?.value) ||
-      Boolean(request.cookies.get(MOCK_ROLE_COOKIE)?.value)
+      signedIn ||
+      // Development convenience only; `isMockAuthEnabled()` refuses this in
+      // production, and the page-level check re-evaluates it independently.
+      (process.env.NODE_ENV !== 'production' &&
+        Boolean(request.cookies.get(MOCK_ROLE_COOKIE)?.value))
 
     if (!hasSession) {
       const url = request.nextUrl.clone()
@@ -119,7 +176,7 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  return NextResponse.next()
+  return response
 }
 
 export const config = {

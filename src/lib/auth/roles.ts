@@ -21,6 +21,11 @@ export const ROLES = [
 
 export type Role = (typeof ROLES)[number]
 
+/** Narrows an arbitrary string — a database value, a claim — to a known role. */
+export function isRole(value: unknown): value is Role {
+  return typeof value === 'string' && (ROLES as readonly string[]).includes(value)
+}
+
 /** Roles that may reach /admin. `member` is deliberately absent. */
 export const STAFF_ROLES = [
   'super_admin',

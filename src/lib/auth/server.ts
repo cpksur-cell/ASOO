@@ -3,8 +3,11 @@ import 'server-only'
 import { cookies } from 'next/headers'
 
 import type { Locale } from '@/i18n/config'
+import { createAuthClient } from '@/lib/supabase/auth-server'
+import { getServiceClient } from '@/lib/supabase/server'
+import { isSupabaseConfigured } from '@/lib/supabase/config'
 import { isMockAuthEnabled, isMockRole, MOCK_ROLE_COOKIE, MOCK_USER_COOKIE } from './mock'
-import { PERMISSIONS, type Role, STAFF_ROLES } from './roles'
+import { isRole, PERMISSIONS, type Role, STAFF_ROLES } from './roles'
 
 export interface UserSession {
   uid: string
@@ -48,17 +51,80 @@ export async function getUserSession(): Promise<UserSession | null> {
   }
 
   /*
-   * Real session — Firebase Auth.
+   * Real session — Supabase Auth.
    *
-   * Phase 2 replaces this with `getAuth().verifySessionCookie(value, true)`
-   * via the Admin SDK, reading the role from a custom claim. The checkRevoked
-   * flag is not optional: a suspended member must lose access immediately, not
-   * at the next token refresh.
+   * `getUser()`, NEVER `getSession()`. getSession returns whatever the cookie
+   * claims without checking it, so a forged cookie would be believed;
+   * getUser revalidates the JWT against the auth server, which is the whole
+   * point of asking. It costs a round trip and is worth it.
    */
-  const sessionCookie = cookieStore.get('__session')?.value
-  if (!sessionCookie) return null
+  const supabase = await createAuthClient()
+  if (!supabase) return null
 
-  return null
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser()
+  if (error || !user) return null
+
+  return {
+    uid: user.id,
+    email: user.email ?? '',
+    displayName:
+      (user.user_metadata?.display_name as string | undefined) ??
+      user.email?.split('@')[0] ??
+      user.id,
+    role: await resolveRole(user.id),
+    preferredLocale:
+      (user.user_metadata?.preferred_locale as Locale | undefined) ?? 'ar',
+  }
+}
+
+/**
+ * Resolve a user's role from the database.
+ *
+ * Deliberately NOT read from a JWT claim or a cookie. Those travel with the
+ * request and are shaped by the client; `user_roles` is server state that a
+ * user cannot influence. A stale token therefore cannot carry a revoked
+ * privilege — the role is re-read on each request.
+ *
+ * Read with the SERVICE client on purpose: the RLS policy on `user_roles`
+ * would otherwise have to expose the table to the user themselves, and the
+ * answer is needed before any permission decision is possible.
+ *
+ * Falls back to `member`, the least-privileged role, if the lookup finds
+ * nothing — an unknown role must never be treated as staff.
+ */
+async function resolveRole(userId: string): Promise<Role> {
+  if (!isSupabaseConfigured()) return 'member'
+
+  const { data, error } = await getServiceClient()
+    .from('user_roles')
+    .select('roles(code)')
+    .eq('user_id', userId)
+
+  if (error || !data?.length) return 'member'
+
+  const codes = data
+    .flatMap((row) => {
+      const rel = (row as { roles?: { code?: string } | Array<{ code?: string }> }).roles
+      return Array.isArray(rel) ? rel.map((r) => r.code) : [rel?.code]
+    })
+    .filter((c): c is string => typeof c === 'string')
+
+  // Most privileged wins when an account holds more than one role.
+  const ORDER: Role[] = [
+    'super_admin',
+    'membership_officer',
+    'finance_officer',
+    'content_editor',
+    'support_agent',
+    'member',
+  ]
+  for (const role of ORDER) {
+    if (codes.includes(role)) return role
+  }
+  return codes.find(isRole) ?? 'member'
 }
 
 /** True when the session holds the given role. `super_admin` holds all of them. */

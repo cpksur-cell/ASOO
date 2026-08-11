@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { KeyRound, Lock, Mail, Phone, ShieldAlert } from 'lucide-react'
 
 import { useAuth } from '@/lib/auth/client'
+import { createClient, isAuthConfigured } from '@/lib/supabase/browser'
 import { Card } from '@/components/ui/primitives'
 import { cn } from '@/lib/cn'
 
@@ -60,66 +61,110 @@ export function LoginForm({
   const [error, setError] = useState<'otp_invalid' | 'failed' | null>(null)
   const [busy, setBusy] = useState(false)
 
+  /*
+   * Whether a real auth backend is reachable. When it is, the mock path is
+   * never taken — even in development — so the flow that ships is the flow
+   * that gets exercised.
+   */
+  const authReady = isAuthConfigured()
+
+  /** Same-origin only — never let a query parameter bounce a user off-site. */
+  function safeRedirect(): string {
+    return redirectTo.startsWith('/') && !redirectTo.startsWith('//') ? redirectTo : '/'
+  }
+
+  function land() {
+    router.push(safeRedirect())
+    // The session lives in a cookie the server reads, so the tree must be
+    // re-fetched for the new identity to take effect.
+    router.refresh()
+  }
+
+  /**
+   * Step one. With a password, this signs in outright; without one it asks
+   * Supabase to email a one-time code and moves to the verify step.
+   */
   async function sendCode(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
     setError(null)
 
-    if (contact.trim().toLowerCase() === 'cpk.sur@gmail.com' && otp === 'Mohammad@1991') {
-      try {
-        await loginAsMockRole('super_admin')
-        router.push(redirectTo.startsWith('/') ? redirectTo : 'admin')
-        router.refresh()
+    const email = contact.trim().toLowerCase()
+
+    try {
+      if (!authReady) {
+        // Development only: no Supabase project wired up yet.
+        if (!mockEnabled) throw new Error('auth-unavailable')
+        await loginAsMockRole('member')
+        land()
         return
-      } catch {
+      }
+
+      const supabase = createClient()
+
+      if (otp) {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password: otp,
+        })
+        if (signInError) {
+          setError('otp_invalid')
+          setBusy(false)
+          return
+        }
+        land()
+        return
+      }
+
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email,
+        options: { shouldCreateUser: false },
+      })
+      if (otpError) {
         setError('failed')
         setBusy(false)
         return
       }
-    }
-
-    if (contact.trim().toLowerCase() === 'cpk.sur@gmail.com' && otp && otp !== 'Mohammad@1991') {
-      setError('otp_invalid')
+      setOtpSent(true)
       setBusy(false)
-      return
+    } catch {
+      setError('failed')
+      setBusy(false)
     }
-
-    // Phase 2: request a real OTP / verify credentials here.
-    await new Promise((r) => setTimeout(r, 500))
-    setOtpSent(true)
-    setBusy(false)
   }
 
+  /** Step two: exchange the emailed code for a session. */
   async function verify(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
     setError(null)
 
-    if (contact.trim().toLowerCase() === 'cpk.sur@gmail.com' && otp === 'Mohammad@1991') {
-      try {
-        await loginAsMockRole('super_admin')
-        router.push(redirectTo.startsWith('/') ? redirectTo : '/admin')
-        router.refresh()
+    const email = contact.trim().toLowerCase()
+
+    try {
+      if (!authReady) {
+        if (!mockEnabled || otp !== DEV_OTP) {
+          setError('otp_invalid')
+          setBusy(false)
+          return
+        }
+        await loginAsMockRole('member')
+        land()
         return
-      } catch {
-        setError('failed')
+      }
+
+      const supabase = createClient()
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        email,
+        token: otp.trim(),
+        type: 'email',
+      })
+      if (verifyError) {
+        setError('otp_invalid')
         setBusy(false)
         return
       }
-    }
-
-    if (!mockEnabled || otp !== DEV_OTP) {
-      setError('otp_invalid')
-      setBusy(false)
-      return
-    }
-
-    try {
-      await loginAsMockRole('member')
-      // Honour where the user was headed. Middleware only ever writes a
-      // same-origin path here, and it is re-validated server-side.
-      router.push(redirectTo)
-      router.refresh()
+      land()
     } catch {
       setError('failed')
       setBusy(false)

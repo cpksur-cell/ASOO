@@ -60,7 +60,7 @@ Find all three values in the Supabase dashboard under
 2. **Apply the schema.** Two options:
 
    **A. Supabase SQL Editor (no tooling):** open each file in `supabase/migrations/`
-   in ascending order (`0001` → `0006`) and run it, then run `supabase/seed.sql`.
+   in ascending order (`0001` → `0010`) and run it, then run `supabase/seed.sql`.
 
    **B. Supabase CLI (recommended, repeatable):**
    ```bash
@@ -88,7 +88,21 @@ Find all three values in the Supabase dashboard under
 | `0004_cms.sql` | `post_categories`, `media_assets`, `posts`, `post_translations`, `layouts`, `layout_blocks`, `layout_block_translations` |
 | `0005_reports.sql` | `orders`, `report_submissions`, `report_reviews` (append-only), `report_approvals` |
 | `0006_rls.sql` | Row Level Security: deny-by-default, narrow public reads for reference + published content |
+| `0007_member_import.sql` | `license_number` made nullable (DLS issues the real numbers), plus `import_source`/`imported_at` provenance for bulk-loaded rows |
+| `0008_auth.sql` | Supabase Auth: trigger mirroring `auth.users` into `public.users`, default `member` grant, `current_user_role()` / `is_staff()`, `auth.uid()`-bound RLS, `claim_membership()` |
+| `0009_audit_integrity.sql` | Drops the FK on `audit_logs.actor_user_id` — an audit row is a historical fact and must never be blocked from recording, nor become a retention lock on a user |
+| `0010_reports_files.sql` | DXF + GML file types, structured approval columns (DLS reference, basin, plot, survey method, notes), and the PRIVATE `reports` storage bucket |
 | `seed.sql` | roles, 12 governorates, categories, demo user/member, demo orders/submissions/approval — mirrors the in-memory demo |
+
+### Storage
+
+One bucket, `reports`, created by `0010`. It is **private** and deliberately has
+**no policy for `anon` or `authenticated`**, so those roles cannot read, list or
+write to it at all. Every access goes through the server with the service role,
+after the application has checked the caller's permission, and downloads are
+issued as signed URLs valid for two minutes. Verified: an anonymous client can
+neither download a known object path nor enumerate the bucket, and a tampered
+signature is rejected with a 400.
 
 Not yet migrated (later passes, per the "core tables first" decision): finance
 (`invoices`, `payments`, …), certificates, complaints, notifications. They remain

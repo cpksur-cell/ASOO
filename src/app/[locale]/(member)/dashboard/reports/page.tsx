@@ -63,6 +63,7 @@ export default async function ReportsPage({
               orderNotFound: t('reports.orderNotFound'),
               fileTooBig: t('reports.fileTooBig'),
               fileTypeNotAllowed: t('reports.fileTypeNotAllowed'),
+              fileContentMismatch: t('reports.fileContentMismatch'),
               noPermission: t('reports.noPermission'),
             }}
           />

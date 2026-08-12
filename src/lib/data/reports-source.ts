@@ -81,6 +81,8 @@ function mapSubmission(row: SubmissionRowWithReviews): StoredSubmission {
     fileType: row.file_type as ReportFileType,
     fileName: row.file_name,
     fileSize: row.file_size ?? 0,
+    storagePath: row.storage_path ?? '',
+    checksum: row.checksum ?? null,
     version: row.version,
     status: row.status as SubmissionStatus,
     note: row.note ?? '',
@@ -98,6 +100,11 @@ function mapApproval(row: ApprovalRow): StoredApproval {
     status: row.status,
     approvedByUid: row.approved_by,
     issuedAt: day(row.issued_at),
+    dlsReference: row.dls_reference ?? null,
+    basin: row.basin ?? null,
+    plot: row.plot ?? null,
+    surveyMethod: row.survey_method ?? null,
+    notes: row.notes ?? null,
   }
 }
 
@@ -207,6 +214,8 @@ export async function addSubmission(input: {
   fileName: string
   fileSize: number
   note: string
+  storagePath?: string
+  checksum?: string | null
 }): Promise<StoredSubmission> {
   if (!isSupabaseConfigured()) return memAddSubmission(input)
 
@@ -240,6 +249,8 @@ export async function addSubmission(input: {
       file_type: input.fileType,
       file_name: input.fileName,
       file_size: input.fileSize,
+      storage_path: input.storagePath ?? '',
+      checksum: input.checksum ?? null,
       version,
       status: 'uploaded',
       note: input.note,
@@ -298,11 +309,19 @@ export async function setSubmissionDecision(
  * verification code (random), so a client can never inject either; both come
  * back on the insert. In the fallback path the store generates them instead.
  */
+export interface ApprovalDetails {
+  dlsReference?: string
+  basin?: string
+  plot?: string
+  surveyMethod?: string
+  notes?: string
+}
+
 export async function addApproval(input: {
   submissionId: string
   orderId: string
   approvedByUid: string
-}): Promise<StoredApproval> {
+} & ApprovalDetails): Promise<StoredApproval> {
   if (!isSupabaseConfigured()) {
     return memAddApproval({
       submissionId: input.submissionId,
@@ -319,6 +338,13 @@ export async function addApproval(input: {
       submission_id: input.submissionId,
       order_id: input.orderId,
       approved_by: input.approvedByUid,
+      // Empty strings become NULL: "not recorded" and "recorded as blank" are
+      // different facts on a certificate.
+      dls_reference: input.dlsReference?.trim() || null,
+      basin: input.basin?.trim() || null,
+      plot: input.plot?.trim() || null,
+      survey_method: input.surveyMethod?.trim() || null,
+      notes: input.notes?.trim() || null,
     })
     .select('*')
     .single()

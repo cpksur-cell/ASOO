@@ -36,5 +36,24 @@ export const contact = {
 export const dlsRegistryUrl =
   'https://tracking.dls.gov.jo:8443/ords/r/dlsinfo/dls-information/surveyors'
 
+/**
+ * The syndicate's own maps, published on Google My Maps.
+ *
+ * Only the map id is stored. The embed and the "open in Google Maps" link are
+ * both derived from it, so a map can never be swapped in one place and left
+ * stale in the other.
+ */
+export const syndicateMaps = [
+  { id: '1MeY7y8Mp6RXm3v07a1nH32cUm0joRYM', titleKey: 'maps.mapOneTitle' },
+  { id: '1xbiAyFnR-IgDnL-Pj3kSTInNMkj42zM', titleKey: 'maps.mapTwoTitle' },
+] as const
+
+/** `ehbc` sets the embed's chrome colour to match the page surround. */
+export const mapEmbedUrl = (id: string) =>
+  `https://www.google.com/maps/d/u/0/embed?mid=${id}&ehbc=2E312F`
+
+export const mapViewUrl = (id: string) =>
+  `https://www.google.com/maps/d/u/0/viewer?mid=${id}`
+
 export const dlsLegislationUrl =
   'https://www.dls.gov.jo/AR/List/%D8%AA%D8%B4%D8%B1%D9%8A%D8%B9%D8%A7%D8%AA__%D8%B0%D8%A7%D8%AA_%D8%B9%D9%84%D8%A7%D9%82%D8%A9'

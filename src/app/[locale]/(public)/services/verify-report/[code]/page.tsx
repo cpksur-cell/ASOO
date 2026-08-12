@@ -106,6 +106,21 @@ export default async function VerifyReportPage({
                   <Row label={t('reports.verifyIssuedAt')}>
                     <span data-numeric>{formatDate(approval.issuedAt, typed)}</span>
                   </Row>
+                  {/* Only what the reviewer actually recorded. A verification
+                      page must not imply a field was certified when it was
+                      left blank. */}
+                  {approval.dlsReference && (
+                    <Row label={t('reports.dlsReference')}>
+                      <Mono>{approval.dlsReference}</Mono>
+                    </Row>
+                  )}
+                  {approval.basin && (
+                    <Row label={t('reports.basin')}>{approval.basin}</Row>
+                  )}
+                  {approval.plot && <Row label={t('reports.plot')}>{approval.plot}</Row>}
+                  {approval.surveyMethod && (
+                    <Row label={t('reports.surveyMethod')}>{approval.surveyMethod}</Row>
+                  )}
                   {submission && (
                     <Row label={t('reports.fileName')}>
                       <span dir="ltr" className="text-text-secondary">

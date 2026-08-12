@@ -8,6 +8,8 @@ import { Breadcrumbs } from '@/components/layout/breadcrumbs'
 import { PageHeader } from '@/components/ui/primitives'
 import { RevealGroup, RevealItem } from '@/components/ui/reveal'
 import { GovLinkCard } from '@/components/features/cards'
+import { EmbeddedMap } from '@/components/features/embedded-map'
+import { mapEmbedUrl, mapViewUrl, syndicateMaps } from '@/lib/site'
 
 export async function generateMetadata({
   params,
@@ -53,6 +55,31 @@ export default async function MapsPage({
             </RevealItem>
           ))}
         </RevealGroup>
+
+        {/* The syndicate's own maps, above the third-party links: this is the
+            content visitors come to /maps for, and it should not sit below a
+            list of other people's services. */}
+        <section className="mt-16 border-t border-border-subtle pt-12">
+          <h2 className="text-[length:var(--type-2xl)] font-semibold text-text-primary">
+            {t('maps.interactiveHeading')}
+          </h2>
+          <div className="mt-3 h-[3px] w-14 rounded-full bg-surface-rule" aria-hidden />
+          <p className="prose-measure mt-4 text-text-secondary">{t('maps.interactiveIntro')}</p>
+
+          <RevealGroup className="mt-8 grid grid-cols-1 gap-6 xl:grid-cols-2">
+            {syndicateMaps.map((map) => (
+              <RevealItem key={map.id}>
+                <EmbeddedMap
+                  src={mapEmbedUrl(map.id)}
+                  title={t(map.titleKey)}
+                  hint={t('maps.mapFrameHint')}
+                  openLabel={t('maps.openInGoogleMaps')}
+                  openHref={mapViewUrl(map.id)}
+                />
+              </RevealItem>
+            ))}
+          </RevealGroup>
+        </section>
 
         <section className="mt-16 border-t border-border-subtle pt-12">
           <h2 className="text-[length:var(--type-2xl)] font-semibold text-text-primary">

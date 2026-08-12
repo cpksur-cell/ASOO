@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { CheckCircle2, Paperclip, Plus, Upload } from 'lucide-react'
 
 import { cn } from '@/lib/cn'
-import { MAX_REPORT_BYTES, fileTypeFromName } from '@/lib/reports'
+import { ACCEPT_ATTRIBUTE, MAX_REPORT_BYTES, NEW_UPLOAD_TYPES, fileTypeFromName } from '@/lib/reports'
 import { Modal } from '@/components/ui/modal'
 import { submitReportAction, type SubmitResult } from './actions'
 
@@ -25,6 +25,7 @@ interface UploaderLabels {
   orderNotFound: string
   fileTooBig: string
   fileTypeNotAllowed: string
+  fileContentMismatch: string
   noPermission: string
 }
 
@@ -40,7 +41,6 @@ export function ReportUploader({
   const [orderNumber, setOrderNumber] = useState(orders[0]?.number ?? '')
   const [note, setNote] = useState('')
   const [fileName, setFileName] = useState('')
-  const [fileSize, setFileSize] = useState(0)
   const [clientError, setClientError] = useState<string | null>(null)
   const [banner, setBanner] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null)
   const [pending, startTransition] = useTransition()
@@ -50,11 +50,13 @@ export function ReportUploader({
     setClientError(null)
     if (!file) {
       setFileName('')
-      setFileSize(0)
       return
     }
-    // Validate on the client for a fast response; the server re-validates.
-    if (!fileTypeFromName(file.name)) {
+    // Fast feedback only; the server re-checks the actual bytes, which is the
+    // part that decides. Restricted to the formats offered for new uploads —
+    // the legacy ones still resolve for existing submissions.
+    const type = fileTypeFromName(file.name)
+    if (!type || !NEW_UPLOAD_TYPES.includes(type)) {
       setClientError(labels.fileTypeNotAllowed)
       setFileName('')
       return
@@ -65,7 +67,6 @@ export function ReportUploader({
       return
     }
     setFileName(file.name)
-    setFileSize(file.size)
   }
 
   function reportError(result: Extract<SubmitResult, { ok: false }>) {
@@ -73,6 +74,9 @@ export function ReportUploader({
       ORDER_NOT_FOUND: labels.orderNotFound,
       FILE_TYPE: labels.fileTypeNotAllowed,
       FILE_SIZE: labels.fileTooBig,
+      // The extension said one thing and the bytes said another.
+      FILE_CONTENT: labels.fileContentMismatch,
+      STORAGE: labels.uploadFailed,
       UNAUTHORIZED: labels.noPermission,
       UNAUTHENTICATED: labels.noPermission,
     }
@@ -80,18 +84,26 @@ export function ReportUploader({
   }
 
   function submit() {
-    if (!fileName) {
+    const picked = inputRef.current?.files?.[0]
+    if (!picked) {
       setClientError(labels.fileTypeNotAllowed)
       return
     }
     startTransition(async () => {
-      const result = await submitReportAction({ orderNumber, fileName, fileSize, note })
+      // The actual bytes travel in a FormData — the server stores the file and
+      // checksums it, so sending only a name and a size would be theatre.
+      const body = new FormData()
+      body.set('orderNumber', orderNumber)
+      body.set('note', note)
+      body.set('file', picked)
+
+      const result = await submitReportAction(body)
       if (!result.ok) return reportError(result)
       setBanner({ tone: 'ok', text: labels.uploaded })
       setOpen(false)
       setNote('')
       setFileName('')
-      setFileSize(0)
+      if (inputRef.current) inputRef.current.value = ''
       router.refresh()
     })
   }
@@ -180,7 +192,7 @@ export function ReportUploader({
                 <input
                   ref={inputRef}
                   type="file"
-                  accept=".pdf,.doc,.docx,.dwg"
+                  accept={ACCEPT_ATTRIBUTE}
                   className="sr-only"
                   onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
                 />

@@ -23,6 +23,20 @@ const schema = z.object({
   submissionId: z.string().min(1),
   decision: z.enum(['approved', 'rejected', 'revision_requested']),
   comment: z.string().trim().max(2000).optional().default(''),
+  /*
+   * What the approval actually certifies.
+   *
+   * A syndicate approval on a survey report is not a bare yes — the paper
+   * form it replaces records the land reference the work relates to and how
+   * the survey was performed. Optional at this layer because a reviewer may
+   * legitimately approve before every field is to hand, but captured on the
+   * approval record and shown on the public verification page when present.
+   */
+  dlsReference: z.string().trim().max(64).optional(),
+  basin: z.string().trim().max(64).optional(),
+  plot: z.string().trim().max(64).optional(),
+  surveyMethod: z.string().trim().max(64).optional(),
+  notes: z.string().trim().max(2000).optional(),
 })
 
 /**
@@ -40,7 +54,7 @@ const schema = z.object({
 export async function reviewReportAction(input: unknown): Promise<ReviewResult> {
   const parsed = schema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'INVALID' }
-  const { submissionId, decision, comment } = parsed.data
+  const { submissionId, decision, comment, ...details } = parsed.data
 
   if ((decision === 'rejected' || decision === 'revision_requested') && !comment) {
     return { ok: false, error: 'COMMENT_REQUIRED' }
@@ -73,6 +87,7 @@ export async function reviewReportAction(input: unknown): Promise<ReviewResult> 
             submissionId,
             orderId: submission.orderId,
             approvedByUid: session.uid,
+            ...details,
           })
           return { verificationCode: approval.verificationCode }
         },

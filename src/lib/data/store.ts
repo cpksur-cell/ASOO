@@ -73,7 +73,12 @@ export type OrderType =
   | 'site_plan'
   | 'other'
 
-export type ReportFileType = 'pdf' | 'docx' | 'dwg'
+/**
+ * DXF (drawing interchange) and GML (OGC geography markup) are what the
+ * Department of Lands and Survey actually exchanges, so both are first-class.
+ * `docx` and `dwg` remain because submissions already exist under them.
+ */
+export type ReportFileType = 'pdf' | 'dxf' | 'gml' | 'docx' | 'dwg'
 
 export type SubmissionStatus =
   | 'uploaded'
@@ -102,6 +107,10 @@ export interface StoredSubmission {
   fileType: ReportFileType
   fileName: string
   fileSize: number
+  /** Object key in the private bucket. Empty when no bytes were stored. */
+  storagePath: string
+  /** SHA-256 of the stored bytes, or null for legacy metadata-only rows. */
+  checksum: string | null
   version: number
   status: SubmissionStatus
   note: string
@@ -117,6 +126,12 @@ export interface StoredApproval {
   status: 'valid' | 'revoked'
   approvedByUid: string
   issuedAt: string
+  /** What the approval certifies. NULL where the reviewer did not record it. */
+  dlsReference: string | null
+  basin: string | null
+  plot: string | null
+  surveyMethod: string | null
+  notes: string | null
 }
 
 interface Store {
@@ -313,6 +328,8 @@ export function addSubmission(input: {
   fileName: string
   fileSize: number
   note: string
+  storagePath?: string
+  checksum?: string | null
 }): StoredSubmission {
   const prior = store.submissions.filter((s) => s.orderId === input.orderId)
   for (const p of prior) {
@@ -328,6 +345,8 @@ export function addSubmission(input: {
     fileType: input.fileType,
     fileName: input.fileName,
     fileSize: input.fileSize,
+    storagePath: input.storagePath ?? '',
+    checksum: input.checksum ?? null,
     version,
     status: 'uploaded',
     note: input.note,
@@ -356,11 +375,21 @@ export function addApproval(input: {
   approvalNumber: string
   verificationCode: string
   approvedByUid: string
+  dlsReference?: string | null
+  basin?: string | null
+  plot?: string | null
+  surveyMethod?: string | null
+  notes?: string | null
 }): StoredApproval {
   const approval: StoredApproval = {
     ...input,
     status: 'valid',
     issuedAt: new Date().toISOString().slice(0, 10),
+    dlsReference: input.dlsReference ?? null,
+    basin: input.basin ?? null,
+    plot: input.plot ?? null,
+    surveyMethod: input.surveyMethod ?? null,
+    notes: input.notes ?? null,
   }
   store.approvals.unshift(approval)
   return approval

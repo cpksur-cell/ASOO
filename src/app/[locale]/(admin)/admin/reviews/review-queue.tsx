@@ -19,6 +19,7 @@ import { href } from '@/lib/routes'
 import { Modal } from '@/components/ui/modal'
 import { Card, EmptyState, Mono, Tag } from '@/components/ui/primitives'
 import { reviewReportAction, type ReviewResult } from './actions'
+import { getReportDownloadUrlAction } from '@/app/[locale]/(member)/dashboard/reports/actions'
 
 export interface ReviewLabels {
   title: string
@@ -41,6 +42,16 @@ export interface ReviewLabels {
   rejectedDone: string
   revisionDone: string
   downloadFile: string
+  downloadPreparing: string
+  downloadFailed: string
+  noFileStored: string
+  approvalDetails: string
+  dlsReference: string
+  basin: string
+  plot: string
+  surveyMethod: string
+  approvalNotes: string
+  approvalNotesHint: string
   verificationCode: string
   scanToVerify: string
   cancel: string
@@ -184,6 +195,14 @@ function ReviewDialog({
   const [comment, setComment] = useState('')
   const [touched, setTouched] = useState(false)
   const [issued, setIssued] = useState<string | null>(null)
+  const [downloading, setDownloading] = useState(false)
+  const [details, setDetails] = useState({
+    dlsReference: '',
+    basin: '',
+    plot: '',
+    surveyMethod: '',
+    notes: '',
+  })
   const [pending, startTransition] = useTransition()
 
   function errText(result: Extract<ReviewResult, { ok: false }>) {
@@ -198,7 +217,13 @@ function ReviewDialog({
       return
     }
     startTransition(async () => {
-      const result = await reviewReportAction({ submissionId: item.id, decision, comment })
+      const result = await reviewReportAction({
+        submissionId: item.id,
+        decision,
+        comment,
+        // Only carried on approval — a rejection certifies nothing.
+        ...(decision === 'approved' ? details : {}),
+      })
       if (!result.ok) return onError(errText(result))
 
       if (decision === 'approved' && result.verificationCode) {
@@ -263,13 +288,28 @@ function ReviewDialog({
                 <FileText className="size-4 text-text-brand" aria-hidden />
                 <span dir="ltr">{item.fileName}</span>
               </span>
-              {/* Phase 3: a signed URL to the private bucket. */}
+              {/*
+                Fetches a SHORT-LIVED signed URL and opens it. The link is
+                minted server-side only after the permission check, so the
+                private bucket is never exposed and the URL expires in minutes.
+              */}
               <button
                 type="button"
-                className="inline-flex min-h-11 items-center gap-1.5 text-[length:var(--type-sm)] font-medium text-text-brand hover:underline"
+                disabled={downloading}
+                onClick={async () => {
+                  setDownloading(true)
+                  const result = await getReportDownloadUrlAction(item.id)
+                  setDownloading(false)
+                  if (!result.ok) {
+                    onError(result.error === 'NO_FILE' ? labels.noFileStored : labels.downloadFailed)
+                    return
+                  }
+                  window.open(result.url, '_blank', 'noopener,noreferrer')
+                }}
+                className="inline-flex min-h-11 items-center gap-1.5 text-[length:var(--type-sm)] font-medium text-text-brand hover:underline disabled:opacity-50"
               >
                 <Download className="size-4" aria-hidden />
-                {labels.downloadFile}
+                {downloading ? labels.downloadPreparing : labels.downloadFile}
               </button>
             </div>
 
@@ -294,6 +334,54 @@ function ReviewDialog({
                 </p>
               )}
             </div>
+
+            {/*
+              What the approval certifies. Only meaningful on approval, so it
+              is collapsed away from the reject/revision path where it would be
+              noise.
+            */}
+            <details className="mt-4 rounded-lg border border-border-subtle p-3">
+              <summary className="cursor-pointer text-[length:var(--type-sm)] font-medium text-text-secondary">
+                {labels.approvalDetails}
+              </summary>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <DetailField
+                  label={labels.dlsReference}
+                  value={details.dlsReference}
+                  onChange={(v) => setDetails((d) => ({ ...d, dlsReference: v }))}
+                  ltr
+                />
+                <DetailField
+                  label={labels.surveyMethod}
+                  value={details.surveyMethod}
+                  onChange={(v) => setDetails((d) => ({ ...d, surveyMethod: v }))}
+                />
+                <DetailField
+                  label={labels.basin}
+                  value={details.basin}
+                  onChange={(v) => setDetails((d) => ({ ...d, basin: v }))}
+                />
+                <DetailField
+                  label={labels.plot}
+                  value={details.plot}
+                  onChange={(v) => setDetails((d) => ({ ...d, plot: v }))}
+                />
+              </div>
+              <label className="mt-3 block">
+                <span className="block text-[length:var(--type-xs)] font-medium text-text-secondary">
+                  {labels.approvalNotes}
+                </span>
+                <textarea
+                  rows={2}
+                  value={details.notes}
+                  onChange={(e) => setDetails((d) => ({ ...d, notes: e.target.value }))}
+                  className="mt-1.5 w-full rounded-lg border border-border-default bg-surface-default px-3 py-2 text-[length:var(--type-sm)] text-text-primary"
+                />
+                <span className="mt-1 block text-[length:var(--type-xs)] text-text-muted">
+                  {labels.approvalNotesHint}
+                </span>
+              </label>
+            </details>
 
             <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
               <button
@@ -328,5 +416,32 @@ function ReviewDialog({
         )}
       </>
     </Modal>
+  )
+}
+
+/** One labelled input inside the approval-details panel. */
+function DetailField({
+  label,
+  value,
+  onChange,
+  ltr,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  ltr?: boolean
+}) {
+  return (
+    <label className="block">
+      <span className="block text-[length:var(--type-xs)] font-medium text-text-secondary">
+        {label}
+      </span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        dir={ltr ? 'ltr' : undefined}
+        className="mt-1.5 min-h-11 w-full rounded-lg border border-border-default bg-surface-default px-3 text-[length:var(--type-sm)] text-text-primary"
+      />
+    </label>
   )
 }

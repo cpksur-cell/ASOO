@@ -67,6 +67,11 @@ export interface ApprovalRow {
   status: 'valid' | 'revoked'
   approved_by: string
   issued_at: string
+  dls_reference: string | null
+  basin: string | null
+  plot: string | null
+  survey_method: string | null
+  notes: string | null
 }
 
 export interface AuditLogInsert {

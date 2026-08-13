@@ -137,7 +137,7 @@ export function MembersManager({
             {labels.search}
           </label>
           <Search
-            className="pointer-events-none absolute inset-inline-start-3.5 top-1/2 size-4 -translate-y-1/2 text-text-muted"
+            className="pointer-events-none absolute start-3.5 top-1/2 size-4 -translate-y-1/2 text-text-muted"
             aria-hidden
           />
           <input

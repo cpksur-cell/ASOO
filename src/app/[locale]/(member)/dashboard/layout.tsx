@@ -49,6 +49,11 @@ export default async function MemberLayout({
     { key: 'overview', label: t('member.overview'), href: href(typed, 'dashboard'), exact: true },
     { key: 'subscriptions', label: t('member.subscriptions'), href: href(typed, 'dashboard/subscriptions') },
     { key: 'reports', label: t('reports.navMember'), href: href(typed, 'dashboard/reports') },
+    {
+      key: 'service-requests',
+      label: t('serviceRequests.navMember'),
+      href: href(typed, 'dashboard/service-requests'),
+    },
     { key: 'profile', label: t('member.profile'), href: href(typed, 'dashboard/profile') },
     { key: 'renewal', label: t('member.renewal'), href: href(typed, 'dashboard/renewal') },
     { key: 'certificates', label: t('member.certificates'), href: href(typed, 'dashboard/certificates') },

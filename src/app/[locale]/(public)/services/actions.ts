@@ -1,0 +1,81 @@
+'use server'
+
+import { revalidatePath } from 'next/cache'
+
+import { assertPermission, AuthError } from '@/lib/auth/server'
+import { withAudit } from '@/lib/audit'
+import { createServiceRequest } from '@/lib/data/service-requests'
+import {
+  MAX_NOTE_LENGTH,
+  isServiceRequestType,
+  isValidDlsKey,
+  normalizeDlsKey,
+} from '@/lib/service-requests'
+
+export type ServiceRequestResult =
+  | { ok: true; requestNumber: string }
+  | {
+      ok: false
+      error: 'UNAUTHENTICATED' | 'UNAUTHORIZED' | 'INVALID_TYPE' | 'INVALID_KEY' | 'FAILED'
+    }
+
+/**
+ * Submit a counter e-service request.
+ *
+ * The member supplies one field, so this boundary is small — which makes it
+ * worth being exact about. Both the type and the key are re-derived here: the
+ * type must be one of the two known services (a client could post any string,
+ * and an unknown value would otherwise reach the enum and fail as a 500), and
+ * the key is re-normalized rather than trusted, so the stored spelling is the
+ * server's, not the browser's.
+ *
+ * The requester's identity comes from the SESSION, never from the payload. A
+ * request that could name its own requester would let anyone queue work in
+ * someone else's name and collect a stranger's land data.
+ */
+export async function submitServiceRequestAction(input: {
+  type: string
+  dlsKey: string
+  note?: string
+}): Promise<ServiceRequestResult> {
+  if (!isServiceRequestType(input.type)) return { ok: false, error: 'INVALID_TYPE' }
+
+  const dlsKey = normalizeDlsKey(String(input.dlsKey ?? ''))
+  if (!isValidDlsKey(dlsKey)) return { ok: false, error: 'INVALID_KEY' }
+
+  const note = String(input.note ?? '').trim().slice(0, MAX_NOTE_LENGTH)
+
+  try {
+    const session = await assertPermission('requests', 'submit')
+
+    const request = await withAudit(
+      {
+        action: 'servicerequest.create',
+        entityType: 'service_request',
+        // The key is the entity's identifying fact and belongs in the trail;
+        // the audit row is server-side only and already holds the actor.
+        entityId: dlsKey,
+      },
+      async () =>
+        createServiceRequest({
+          type: input.type as Parameters<typeof createServiceRequest>[0]['type'],
+          dlsKey,
+          note,
+          requesterUid: session.uid,
+          requesterName: session.displayName,
+          requesterEmail: session.email,
+        }),
+    )
+
+    revalidatePath('/ar/dashboard/service-requests')
+    revalidatePath('/en/dashboard/service-requests')
+    revalidatePath('/ar/admin/service-requests')
+    revalidatePath('/en/admin/service-requests')
+
+    return { ok: true, requestNumber: request.requestNumber }
+  } catch (err) {
+    if (err instanceof AuthError) return { ok: false, error: err.code }
+    console.error('[servicerequest] submit failed', err)
+    return { ok: false, error: 'FAILED' }
+  }
+}

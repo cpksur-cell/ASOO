@@ -55,6 +55,8 @@ const REASON_REQUIRED = [
   'report.reject',
   'report.revision',
   'approval.revoke',
+  // A refused counter service must say why — the member is told the reason.
+  'servicerequest.reject',
 ]
 
 export class AuditError extends Error {}

@@ -68,6 +68,13 @@ export default async function LoginPage({
     failed: t('auth.failed'),
     devNotice: t('auth.devNotice'),
     devOtpHint: t('auth.devOtpHint'),
+    passwordLabel: t('auth.passwordLabel'),
+    passwordPlaceholder: t('auth.passwordPlaceholder'),
+    signIn: t('auth.signIn'),
+    google: t('auth.google'),
+    googleBusy: t('auth.googleBusy'),
+    googleFailed: t('auth.googleFailed'),
+    orDivider: t('auth.orDivider'),
   }
 
   return (
@@ -81,6 +88,7 @@ export default async function LoginPage({
       <div className="relative z-10 w-full max-w-md px-4">
         <LoginForm
           labels={labels}
+          locale={typed}
           mockEnabled={isMockAuthEnabled()}
           redirectTo={safeRedirect(next, typed)}
         />

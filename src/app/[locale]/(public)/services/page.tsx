@@ -1,13 +1,26 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { BadgeCheck, Clock, CreditCard, QrCode, Receipt, ShieldCheck } from 'lucide-react'
+import {
+  ArrowLeft,
+  BadgeCheck,
+  Clock,
+  CreditCard,
+  Map,
+  QrCode,
+  Receipt,
+  ScrollText,
+  ShieldCheck,
+} from 'lucide-react'
+import Link from 'next/link'
 
 import { createTranslator, getDictionary, isLocale, type Locale } from '@/i18n/config'
 import { href } from '@/lib/routes'
+import { mapEmbedUrl, mapViewUrl, syndicateMaps } from '@/lib/site'
 import { Breadcrumbs } from '@/components/layout/breadcrumbs'
 import { Card, PageHeader } from '@/components/ui/primitives'
 import { Reveal, RevealGroup, RevealItem } from '@/components/ui/reveal'
 import { ButtonLink } from '@/components/ui/button'
+import { EmbeddedMap } from '@/components/features/embedded-map'
 
 export async function generateMetadata({
   params,
@@ -62,6 +75,24 @@ export default async function ServicesPage({
       cta: t('reports.verifySubmit'),
       primary: false,
     },
+    // The two counter services the syndicate performs at the Department of
+    // Lands and Survey. Both take one field — the DLS key.
+    {
+      icon: Map,
+      title: t('serviceRequests.plateTitle'),
+      body: t('serviceRequests.plateIntro'),
+      path: 'services/electronic-plate',
+      cta: t('serviceRequests.requestCta'),
+      primary: false,
+    },
+    {
+      icon: ScrollText,
+      title: t('serviceRequests.changeTitle'),
+      body: t('serviceRequests.changeIntro'),
+      path: 'services/change-statement',
+      cta: t('serviceRequests.requestCta'),
+      primary: false,
+    },
   ]
 
   return (
@@ -105,6 +136,42 @@ export default async function ServicesPage({
             <Assurance icon={<Clock />}>{t('services.assuranceAlways')}</Assurance>
           </Card>
         </Reveal>
+
+        {/*
+          The syndicate's maps, embedded here as well as on /maps. Consulting a
+          map is part of doing the work the other services on this page start,
+          so making people leave for it would be an odd seam. Same source of
+          truth (`syndicateMaps`) — a map swapped there changes in both places.
+        */}
+        <section className="mt-16 border-t border-border-subtle pt-12">
+          <h2 className="text-[length:var(--type-2xl)] font-semibold text-text-primary">
+            {t('services.mapsHeading')}
+          </h2>
+          <div className="mt-3 h-[3px] w-14 rounded-full bg-surface-rule" aria-hidden />
+          <p className="prose-measure mt-4 text-text-secondary">{t('services.mapsIntro')}</p>
+
+          <RevealGroup className="mt-8 grid grid-cols-1 gap-6 xl:grid-cols-2">
+            {syndicateMaps.map((map) => (
+              <RevealItem key={map.id}>
+                <EmbeddedMap
+                  src={mapEmbedUrl(map.id)}
+                  title={t(map.titleKey)}
+                  hint={t('maps.mapFrameHint')}
+                  openLabel={t('maps.openInGoogleMaps')}
+                  openHref={mapViewUrl(map.id)}
+                />
+              </RevealItem>
+            ))}
+          </RevealGroup>
+
+          <Link
+            href={href(typed, 'maps')}
+            className="mt-6 inline-flex min-h-11 items-center gap-2 text-[length:var(--type-sm)] font-semibold text-text-brand hover:underline"
+          >
+            {t('services.viewAllMaps')}
+            <ArrowLeft className="size-4" data-mirror="true" aria-hidden />
+          </Link>
+        </section>
       </div>
     </>
   )

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, ClipboardCheck, FileSliders, LayoutDashboard, Newspaper, ScrollText, ShieldCheck, Users } from 'lucide-react'
+import { ArrowLeft, ClipboardCheck, FileSliders, KeyRound, LayoutDashboard, Newspaper, ScrollText, ShieldCheck, Users } from 'lucide-react'
 
 import { createTranslator, getDictionary, isLocale, type Locale } from '@/i18n/config'
 import { can, getUserSession } from '@/lib/auth/server'
@@ -45,6 +45,7 @@ export default async function AdminLayout({
     { key: 'dashboard', label: t('admin.dashboard'), path: 'admin', icon: LayoutDashboard, permission: null },
     { key: 'members', label: t('admin.members'), path: 'admin/members', icon: Users, permission: ['members', 'read'] as const },
     { key: 'reviews', label: t('reports.navAdmin'), path: 'admin/reviews', icon: ClipboardCheck, permission: ['reports', 'review'] as const },
+    { key: 'service-requests', label: t('serviceRequests.navAdmin'), path: 'admin/service-requests', icon: KeyRound, permission: ['requests', 'read'] as const },
     { key: 'homepage', label: t('admin.homepageComposer'), path: 'admin/cms/homepage', icon: FileSliders, permission: ['layout', 'manage'] as const },
     { key: 'news', label: t('admin.newsManager'), path: 'admin/cms/news', icon: Newspaper, permission: ['posts', 'write'] as const },
     { key: 'audit', label: t('admin.audit'), path: 'admin/audit', icon: ScrollText, permission: ['audit', 'read'] as const },

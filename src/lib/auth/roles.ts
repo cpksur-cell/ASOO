@@ -46,6 +46,9 @@ export const PERMISSIONS: Record<Role, readonly string[]> = {
     'complaints:read', 'complaints:manage',
     // Report review is a technical function; the membership office owns it.
     'reports:review', 'reports:approve', 'reports:verify',
+    // Counter e-services (electronic plate, unarchived change statement): the
+    // membership office is the desk that goes to the department and answers.
+    'requests:read', 'requests:fulfill',
     'media:upload',
     'notifications:campaign',
   ],
@@ -75,6 +78,8 @@ export const PERMISSIONS: Record<Role, readonly string[]> = {
   support_agent: [
     'members:read',
     'complaints:read', 'complaints:manage',
+    // Support staffs the same counter, so it answers the same queue.
+    'requests:read', 'requests:fulfill',
     'certificates:verify',
     'media:upload',
     'posts:read',
@@ -92,5 +97,9 @@ export const PERMISSIONS: Record<Role, readonly string[]> = {
     'certificates:verify',
     // Upload technical reports against their own orders, and verify approvals.
     'reports:submit', 'reports:verify',
+    // Ask the counter for an electronic plate or an unarchived change
+    // statement, and read back only their OWN requests — the ownership check
+    // in the action is what confines this, not the permission itself.
+    'requests:submit', 'requests:read',
   ],
 }

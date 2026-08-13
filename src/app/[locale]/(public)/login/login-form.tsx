@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { KeyRound, Lock, Mail, Phone, ShieldAlert } from 'lucide-react'
 
 import { useAuth } from '@/lib/auth/client'
+import type { Locale } from '@/i18n/client'
+import { GoogleSignIn } from '@/components/features/google-sign-in'
 import { createClient, isAuthConfigured } from '@/lib/supabase/browser'
 import { Card } from '@/components/ui/primitives'
 import { cn } from '@/lib/cn'
@@ -31,6 +33,13 @@ export interface LoginLabels {
   failed: string
   devNotice: string
   devOtpHint: string
+  passwordLabel: string
+  passwordPlaceholder: string
+  signIn: string
+  google: string
+  googleBusy: string
+  googleFailed: string
+  orDivider: string
 }
 
 /**
@@ -44,10 +53,12 @@ export interface LoginLabels {
  */
 export function LoginForm({
   labels,
+  locale,
   mockEnabled,
   redirectTo,
 }: {
   labels: LoginLabels
+  locale: Locale
   mockEnabled: boolean
   redirectTo: string
 }) {
@@ -201,6 +212,33 @@ export function LoginForm({
         </p>
       )}
 
+      {/*
+        Google first, above the divider.
+        Most members already have a Google account and no memorable password
+        for a portal they visit twice a year; putting the one-tap route first
+        reflects which path is actually easier, rather than which one we
+        happened to build first. Hidden when there is no auth backend to talk
+        to — a button that cannot work is worse than no button.
+      */}
+      {authReady && (
+        <div className="mt-6">
+          <GoogleSignIn
+            locale={locale}
+            redirectTo={safeRedirect()}
+            label={labels.google}
+            busyLabel={labels.googleBusy}
+            errorLabel={labels.googleFailed}
+          />
+          <div className="mt-6 flex items-center gap-3" aria-hidden>
+            <span className="h-px flex-1 bg-border-subtle" />
+            <span className="text-[length:var(--type-xs)] text-text-muted">
+              {labels.orDivider}
+            </span>
+            <span className="h-px flex-1 bg-border-subtle" />
+          </div>
+        </div>
+      )}
+
       <div role="tablist" className="mt-6 flex border-b border-border-subtle">
         <button
           type="button"
@@ -267,12 +305,12 @@ export function LoginForm({
               />
               {method === 'email' ? (
                 <Mail
-                  className="pointer-events-none absolute inset-inline-start-3.5 top-1/2 size-4 -translate-y-1/2 text-text-muted"
+                  className="pointer-events-none absolute start-3.5 top-1/2 size-4 -translate-y-1/2 text-text-muted"
                   aria-hidden
                 />
               ) : (
                 <Phone
-                  className="pointer-events-none absolute inset-inline-start-3.5 top-1/2 size-4 -translate-y-1/2 text-text-muted"
+                  className="pointer-events-none absolute start-3.5 top-1/2 size-4 -translate-y-1/2 text-text-muted"
                   aria-hidden
                 />
               )}
@@ -287,20 +325,20 @@ export function LoginForm({
               htmlFor="login-password"
               className="block text-[length:var(--type-xs)] font-medium text-text-secondary"
             >
-              Password / OTP
+              {labels.passwordLabel}
             </label>
             <div className="relative mt-1.5">
               <input
                 id="login-password"
                 name="password"
                 type="password"
-                placeholder="Enter password or leave blank for OTP"
+                placeholder={labels.passwordPlaceholder}
                 value={otp}
                 onChange={(e) => setOtp(e.target.value)}
                 className={inputClass}
               />
               <Lock
-                className="pointer-events-none absolute inset-inline-start-3.5 top-1/2 size-4 -translate-y-1/2 text-text-muted"
+                className="pointer-events-none absolute start-3.5 top-1/2 size-4 -translate-y-1/2 text-text-muted"
                 aria-hidden
               />
             </div>
@@ -312,7 +350,7 @@ export function LoginForm({
             aria-busy={busy}
             className="min-h-11 w-full rounded-lg bg-surface-brand font-semibold text-[length:var(--type-sm)] text-text-on-brand transition-colors hover:bg-primary-600 disabled:opacity-50"
           >
-            {busy ? labels.verifying : 'Sign in'}
+            {busy ? labels.verifying : labels.signIn}
           </button>
         </form>
       ) : (
@@ -345,7 +383,7 @@ export function LoginForm({
                 className={cn(inputClass, 'text-center')}
               />
               <Lock
-                className="pointer-events-none absolute inset-inline-start-3.5 top-1/2 size-4 -translate-y-1/2 text-text-muted"
+                className="pointer-events-none absolute start-3.5 top-1/2 size-4 -translate-y-1/2 text-text-muted"
                 aria-hidden
               />
             </div>

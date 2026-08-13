@@ -61,9 +61,21 @@ export const TRIANGULATION_LEGS: Array<[string, string]> = [
 /**
  * Rotation that brings Jordan to face the camera, in radians.
  *
- * Derived from the projection in the globe component: for the country's
- * centroid (≈31.5°N, 36°E) these are the Y and X rotations that place it at
- * the point of the sphere nearest the viewer. Slightly under-rotated on X so
- * the globe is seen a little from above, which reads better than dead-on.
+ * SOLVED, not eyeballed. For the country's centroid (31.3°N, 36.8°E) these are
+ * the exact X-then-Y rotations — the order the globe component applies them —
+ * that put the point at (0, 0, −r), the spot on the sphere nearest the viewer.
+ *
+ * The earlier hand-tuned pair (0.94, −0.42) left Jordan roughly 0.37 rad off
+ * centre. That was invisible while the globe was drawn at 1× and the country
+ * was a few pixels wide, and it moved Jordan clean off the canvas the moment
+ * the hero zoomed in — the offset scales with the radius. Keep these exact.
+ *
+ * BRANCH MATTERS. Four (rotX, rotY) pairs put the centroid at the sub-viewer
+ * point; only two of them also leave north pointing up and east pointing
+ * right. The other two render the country mirrored and upside-down while
+ * still passing a "is it centred?" check. This is the north-up branch.
+ *
+ * A roll of about 35° remains — the projection has no third angle to remove
+ * it — so the globe component corrects it on the canvas transform.
  */
-export const JORDAN_VIEW = { rotY: 0.94, rotX: -0.42 } as const
+export const JORDAN_VIEW = { rotY: 2.3881, rotX: 2.3487 } as const

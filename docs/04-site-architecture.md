@@ -53,7 +53,9 @@ Homepage  /[locale]
 │   ├── Pay a bill  (no login)     /[locale]/services/pay
 │   │   └── Bill detail            /[locale]/services/pay/[reference]
 │   ├── Payment result             /[locale]/services/pay/result
-│   └── Verify a certificate       /[locale]/services/verify/[code]
+│   ├── Verify a certificate       /[locale]/services/verify/[code]
+│   ├── Electronic plate request   /[locale]/services/electronic-plate
+│   └── Change statement request   /[locale]/services/change-statement
 │
 ├── Join the syndicate             /[locale]/join
 │   └── Application status         /[locale]/join/status/[token]
@@ -178,6 +180,8 @@ graph TD
 | E-services | `/[locale]/services` | Home | Header | public | High |
 | Pay a bill | `/[locale]/services/pay` | Services | Header + footer | public | **High** |
 | Verify certificate | `/[locale]/services/verify/[code]` | Services | QR / direct | public | Medium |
+| Electronic plate request | `/[locale]/services/electronic-plate` | Services | Header + footer | member (sign-in prompt when public) | Medium |
+| Change statement request | `/[locale]/services/change-statement` | Services | Header + footer | member (sign-in prompt when public) | Medium |
 | Maps | `/[locale]/maps` | Home | Header | public | Medium |
 | Documents | `/[locale]/documents` | Home | Header | public | High |
 | Document category | `/[locale]/documents/[category]` | Documents | In-page tabs | public | Medium |

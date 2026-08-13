@@ -99,6 +99,9 @@ Roles are Firebase Auth **custom claims** for cheap edge gating and are **mirror
 | `certificates:verify` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | by code only |
 | `complaints:read` | ✓ | ✓ | — | — | ✓ | own | by token |
 | `complaints:manage` | ✓ | ✓ | — | — | ✓ | — | — |
+| `requests:submit` | ✓ | — | — | — | — | ✓ | — |
+| `requests:read` | ✓ | ✓ | — | — | ✓ | own | — |
+| `requests:fulfill` | ✓ | ✓ | — | — | ✓ | — | — |
 | **Communication** |
 | `notifications:templates` | ✓ | — | — | ✓ | — | — | — |
 | `notifications:campaign` | ✓ | ✓ | ✓ | ✓ | — | — | — |
@@ -115,6 +118,8 @@ Notable deliberate choices:
 - Only `super_admin` reads the audit log. An officer who can read the audit log can see what they need to avoid.
 - `invoices:waive` is finance-only and always requires a reason.
 - `members:export` is restricted and separately audited — bulk export is the highest-value target in the system.
+- `requests:*` covers the two counter e-services (electronic plate · unarchived change statement). Staff **read the whole queue** because they work it; a member's `own` is enforced by deriving the list from `auth.uid`, not from anything the URL carries. `requests:submit` is deliberately absent from every staff role — an officer requesting on a member's behalf would put a citizen's land data in the wrong dashboard.
+- `requests:fulfill` also covers declining, and a decline requires a reason (`servicerequest.reject` is in the audit wrapper's REASON_REQUIRED list). The member is shown that reason.
 
 ---
 

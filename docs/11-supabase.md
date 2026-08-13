@@ -18,6 +18,7 @@ redeploy of source.
 | Area | Backend today |
 |---|---|
 | Orders · report submissions · reviews · approvals | **Supabase** when configured, else in-memory fallback |
+| Counter e-service requests (`service_requests`) | **Supabase** when configured, else in-memory fallback |
 | Audit log (`audit_logs`) | **Supabase** when configured, else in-memory fallback |
 | Public homepage / news / directory / members admin | Seed repository (Supabase tables exist and are seeded; read path wired in a follow-up) |
 
@@ -60,7 +61,7 @@ Find all three values in the Supabase dashboard under
 2. **Apply the schema.** Two options:
 
    **A. Supabase SQL Editor (no tooling):** open each file in `supabase/migrations/`
-   in ascending order (`0001` → `0010`) and run it, then run `supabase/seed.sql`.
+   in ascending order (`0001` → `0011`) and run it, then run `supabase/seed.sql`.
 
    **B. Supabase CLI (recommended, repeatable):**
    ```bash
@@ -92,6 +93,7 @@ Find all three values in the Supabase dashboard under
 | `0008_auth.sql` | Supabase Auth: trigger mirroring `auth.users` into `public.users`, default `member` grant, `current_user_role()` / `is_staff()`, `auth.uid()`-bound RLS, `claim_membership()` |
 | `0009_audit_integrity.sql` | Drops the FK on `audit_logs.actor_user_id` — an audit row is a historical fact and must never be blocked from recording, nor become a retention lock on a user |
 | `0010_reports_files.sql` | DXF + GML file types, structured approval columns (DLS reference, basin, plot, survey method, notes), and the PRIVATE `reports` storage bucket |
+| `0011_service_requests.sql` | Counter e-services: `service_requests` (electronic plate · unarchived change statement, keyed on the DLS key) and the append-only `service_request_events` history, RLS on with no anon policy |
 | `seed.sql` | roles, 12 governorates, categories, demo user/member, demo orders/submissions/approval — mirrors the in-memory demo |
 
 ### Storage
@@ -107,6 +109,58 @@ signature is rejected with a 400.
 Not yet migrated (later passes, per the "core tables first" decision): finance
 (`invoices`, `payments`, …), certificates, complaints, notifications. They remain
 in `schema.gql` and become new numbered migrations when their UI is built.
+
+---
+
+## 4b. Google sign-in (OAuth)
+
+The code is complete; the provider needs configuring once in two dashboards.
+Until that is done the button appears and fails — so do this before announcing
+it.
+
+**1. Google Cloud console** → *APIs & Services → Credentials → Create OAuth
+client ID → Web application*:
+
+- **Authorised JavaScript origins:** `https://www.asoojo.com`
+  (add `http://localhost:3000` for local work)
+- **Authorised redirect URI:** `https://<project-ref>.supabase.co/auth/v1/callback`
+  — this is **Supabase's** callback, not ours. Google returns to Supabase,
+  Supabase then returns to our `/auth/callback`. Getting these two confused is
+  the usual cause of `redirect_uri_mismatch`.
+
+Configure the OAuth consent screen while there: app name, support email, logo,
+and the syndicate's domain. External apps need verification before they leave
+"testing" mode, which takes days — start it early.
+
+**2. Supabase dashboard** → *Authentication → Providers → Google*: enable it,
+paste the client ID and client secret, save.
+
+**3. Supabase dashboard** → *Authentication → URL Configuration*:
+
+- **Site URL:** `https://www.asoojo.com`
+- **Redirect URLs:** add `https://www.asoojo.com/auth/callback` and
+  `http://localhost:3000/auth/callback`
+
+Anything not on that allow-list is refused by Supabase — which is the
+behaviour you want, since it is what stops an attacker redirecting a completed
+sign-in to their own site.
+
+**How it flows.** `GoogleSignIn` calls `signInWithOAuth`; Google returns to
+Supabase; Supabase redirects to `/auth/callback` with a one-time `code`; that
+route exchanges it for a session and sets the cookies. The `next` parameter is
+validated as a same-origin absolute path before any redirect, so the callback
+cannot be used as an open redirect.
+
+**Roles.** A Google sign-up is an `auth.users` INSERT like any other, so the
+`handle_new_auth_user` trigger from `0008` mirrors the row into `public.users`
+and grants the default `member` role. No separate path, and therefore no gap:
+a Google account gets member privileges and nothing more until staff grant
+otherwise.
+
+**Claiming a membership.** Signing in with Google proves control of an email
+address, *not* that the person is a licensed surveyor. Linking an account to a
+member record still goes through `claim_membership()`. Do not let OAuth imply
+membership.
 
 ---
 

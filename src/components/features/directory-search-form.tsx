@@ -35,7 +35,7 @@ export function DirectorySearchForm({
           {t('directory.searchPlaceholder')}
         </label>
         <Search
-          className="pointer-events-none absolute inset-inline-start-3.5 top-1/2 size-5 -translate-y-1/2 text-text-muted"
+          className="pointer-events-none absolute start-3.5 top-1/2 size-5 -translate-y-1/2 text-text-muted"
           aria-hidden
         />
         <input

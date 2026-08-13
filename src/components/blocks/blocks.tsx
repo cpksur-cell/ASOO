@@ -11,6 +11,8 @@ import { Card, SectionHeading } from '@/components/ui/primitives'
 import { CadastralPlan } from '@/components/ui/cadastral-plan'
 import { InteractiveGlobe, type GlobeMarker } from '@/components/ui/interactive-globe'
 import { JORDAN_GOVERNORATES, ORIGIN_CODE, TRIANGULATION_LEGS } from '@/lib/geo/jordan'
+import { JORDAN_BORDER } from '@/lib/geo/jordan-border'
+import { JORDAN_GOVERNORATE_SHAPES } from '@/lib/geo/jordan-governorates'
 import { governorates as seedGovernorates } from '@/lib/data/seed'
 import { Reveal, RevealGroup, RevealItem } from '@/components/ui/reveal'
 import { ButtonLink } from '@/components/ui/button'
@@ -112,18 +114,22 @@ function Hero({ block, locale }: BlockProps) {
             syndicate's members measure the Earth, and that the network is
             occupied from Amman.
           */}
-          <Reveal className="relative hidden lg:block lg:w-[44%] lg:shrink-0">
-            <div className="relative mx-auto aspect-square w-full max-w-[30rem]">
+          <Reveal className="relative hidden lg:block lg:w-[48%] lg:shrink-0">
+            {/* Bigger aspect box gives the zoomed country room to breathe;
+                the border and 12 labels need it. */}
+            <div className="relative mx-auto aspect-square w-full max-w-[36rem]">
               <InteractiveGlobe
                 markers={globeMarkers}
                 legs={TRIANGULATION_LEGS}
                 originCode={ORIGIN_CODE}
+                border={JORDAN_BORDER}
+                shapes={JORDAN_GOVERNORATE_SHAPES}
                 label={t('common.globeLabel')}
                 dir={localeDirection[locale]}
               />
               {/* The affordance has to be stated — a canvas gives no hint that
                   it can be grabbed. */}
-              <p className="pointer-events-none absolute inset-x-0 bottom-0 text-center text-[length:var(--type-xs)] text-text-muted">
+              <p className="pointer-events-none absolute inset-x-0 bottom-2 text-center text-[length:var(--type-xs)] text-text-muted">
                 {t('common.globeHint')}
               </p>
             </div>

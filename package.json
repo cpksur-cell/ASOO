@@ -16,7 +16,8 @@
     "audit:tokens": "node scripts/audit-tokens.mjs",
     "audit:i18n": "node scripts/audit-i18n.mjs",
     "audit:schema": "node scripts/audit-schema.mjs",
-    "verify": "npm run tokens:build && npm run audit:tokens && npm run audit:i18n && npm run audit:schema && npm run typecheck && npm run lint"
+    "check:dls": "node scripts/check-dls-key.mts",
+    "verify": "npm run tokens:build && npm run audit:tokens && npm run audit:i18n && npm run audit:schema && npm run check:dls && npm run typecheck && npm run lint"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

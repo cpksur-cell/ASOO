@@ -1,6 +1,22 @@
 -- ============================================================
--- ASOO Portal — combined RESET + migration + seed (re-runnable)
--- Paste this whole file into the Supabase SQL Editor and Run.
+-- ASOO Portal — combined RESET + migration + seed
+--
+-- ⛔ DO NOT RUN THIS AGAINST THE LIVE DATABASE. ⛔
+--
+-- This was the FIRST-TIME bootstrap, written when the project held
+-- nothing but demo rows. It is now destructive: the reset below drops
+-- `members`, and that table holds the 388 real licensed surveyors
+-- imported from the syndicate's roster. Running it would delete them
+-- and reseed the demo data in their place.
+--
+-- It also covers migrations 0001–0006 ONLY. Everything since
+-- (0007 member import · 0008 auth · 0009 audit integrity ·
+-- 0010 report files + storage · 0011 service requests) is NOT in this
+-- bundle and must be applied from `migrations/` individually, in
+-- ascending order. See docs/11-supabase.md §3.
+--
+-- Kept in the repository as the record of how the database was first
+-- created, not as a tool to reach for.
 -- ============================================================
 
 

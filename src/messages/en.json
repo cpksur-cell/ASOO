@@ -672,5 +672,82 @@
     "cancel": "Cancel",
     "noPermission": "You do not have permission to do that.",
     "actionFailed": "The action could not be completed. Please try again."
+  },
+  "legal": {
+    "lastReviewed": "Last reviewed",
+    "pendingTitle": "Wording pending approval",
+    "pendingBody": "This page describes how the system actually behaves today. The final legal wording is subject to approval by the syndicate’s legal authority before public launch.",
+    "contactPrompt": "For any question about this page, contact the syndicate."
+  },
+  "privacy": {
+    "title": "Privacy policy",
+    "intro": "What the syndicate portal collects, why it collects it, and who can see it.",
+    "collectTitle": "What we collect",
+    "collectPublic": "Public browsing: no account is needed to read news, documents, maps, or the member directory.",
+    "collectDirectory": "Member directory: shows only the member’s name, membership number, governorate, and office — and only for members who consented to be listed and whose membership is active.",
+    "collectAccount": "Account: your email, display name, preferred language, and your role in the system.",
+    "collectRequests": "Service requests: the Department of Lands and Survey key you enter, any note you attach, and the data the department returns to you.",
+    "collectReports": "Technical reports: the file you upload, its metadata, and its checksum.",
+    "useTitle": "How it is used",
+    "useBody": "Data is used only to deliver the service you asked for: listing you in the directory if you consented, completing your requests at the department, and reviewing and approving your reports. It is never sold and never used for advertising.",
+    "accessTitle": "Who can see it",
+    "accessBody": "Your records are bound to your account in the database itself, not merely in the interface, so another member cannot read them. Authorised syndicate staff see them in the course of their work, and every administrative action is written to an append-only audit log.",
+    "filesTitle": "Files",
+    "filesBody": "Uploaded reports are held in a private, non-public storage bucket and are reachable only through a short-lived signed link issued after a permission check.",
+    "rightsTitle": "Your rights",
+    "rightsBody": "You may request access to your data or its correction, and you can hide your profile from the public directory at any time from your profile page."
+  },
+  "terms": {
+    "title": "Terms of use",
+    "intro": "The terms governing use of the Syndicate of Surveying Office Owners portal.",
+    "useTitle": "Acceptable use",
+    "useBody": "The portal serves syndicate members and the public. Attempting to reach another member’s data, scraping the directory in bulk, or disrupting the service is prohibited.",
+    "accountTitle": "Your account",
+    "accountBody": "You are responsible for keeping your sign-in details confidential. Every action taken through your account is attributed to you in the audit log.",
+    "dataTitle": "Accuracy of data",
+    "dataBody": "Directory data comes from the syndicate’s records. The maps shown are for orientation only — they are not an official survey document and must not be relied on for any legal or surveying purpose.",
+    "serviceTitle": "Service availability",
+    "serviceBody": "The syndicate aims to keep the portal available at all times, without guaranteeing uninterrupted service during maintenance or events beyond its control."
+  },
+  "accessibility": {
+    "title": "Accessibility statement",
+    "intro": "The syndicate is committed to a portal everyone can use, including people using screen readers and keyboard navigation.",
+    "standardTitle": "The standard we target",
+    "standardBody": "The target is WCAG 2.1 Level AA, treated as a floor rather than an aspiration.",
+    "doneTitle": "What is in place today",
+    "doneContrast": "Colour contrast: every colour pairing in the design system exceeds 4.5:1, verified automatically on every build.",
+    "doneKeyboard": "Full keyboard navigation with a clearly visible focus indicator.",
+    "doneRtl": "Arabic is the primary language, and right-to-left is built into the layout rather than bolted on.",
+    "doneMotion": "The system’s reduced-motion preference is respected.",
+    "doneStatus": "Status is never signalled by colour alone — an icon and a text label always accompany it.",
+    "knownTitle": "What is still outstanding",
+    "knownBody": "Full testing with an Arabic screen reader across the payment, renewal, and certificate journeys has not yet been carried out. It is scheduled in the pre-launch audit.",
+    "feedbackTitle": "Tell us",
+    "feedbackBody": "If you hit a barrier that stops you completing a transaction, contact the syndicate and we will address it."
+  },
+  "joinPage": {
+    "eligibilityTitle": "Who can join",
+    "eligibilityBody": "Membership is for licensed surveyors and licensed surveying offices in the Kingdom. The detailed conditions are set by Syndicate Law 43 of 1972 and Regulation 105 of 1999.",
+    "documentsTitle": "Documents required",
+    "documentsBody": "The syndicate confirms the list of documents when an application is made.",
+    "howTitle": "How to apply",
+    "howBody": "Applications are currently made at the syndicate’s offices. Contact the syndicate to arrange a visit and confirm which documents to bring.",
+    "onlineSoon": "Applying online and tracking an application through the portal are in development and will follow.",
+    "contactCta": "Contact the syndicate",
+    "directoryCta": "Browse the member directory"
+  },
+  "boardPage": {
+    "pendingTitle": "The board roster is not yet published",
+    "pendingBody": "The names and roles of the syndicate’s board members will appear here once the syndicate has confirmed them. They have not been published yet, and unverified information will not be shown here."
+  },
+  "historyPage": {
+    "pendingTitle": "This history page is being prepared",
+    "pendingBody": "The syndicate was established in 1999 under Regulation 105 of 1999, pursuant to Syndicate Law 43 of 1972. The full historical account will be published here once the syndicate has approved it."
+  },
+  "verifyPage": {
+    "notYetTitle": "Certificate issuing has not started",
+    "notYetBody": "The syndicate does not yet issue electronic certificates through the portal, so there is no certificate code to verify. This page will work as soon as issuing begins.",
+    "reportAlt": "To verify a technical report approval issued by the syndicate, use the report verification page.",
+    "reportCta": "Verify a report approval"
   }
 }

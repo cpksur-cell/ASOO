@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { Locale } from '@/i18n/config'
+import type { AuditedOp } from '@/lib/audit/atomic'
 import { getServiceClient } from '@/lib/supabase/server'
 import type { StoredBlock } from './store'
 import type { LayoutRegion } from './types'
@@ -117,25 +118,43 @@ export async function listBlocks(locale: Locale): Promise<StoredBlock[]> {
   return (data as unknown as AdminBlockRow[]).map((r) => toStoredBlock(r, locale))
 }
 
-export async function setBlockPublished(id: string, isPublished: boolean): Promise<void> {
-  const { error } = await getServiceClient()
-    .from('layout_blocks')
-    .update({ is_published: isPublished })
-    .eq('id', id)
-  if (error) throw error
+/* --------------------------------------------------------- op builders */
+/*
+ * These describe writes rather than performing them, so the action can hand
+ * them to `withAtomicAudit` and have the change and its audit row commit in
+ * one transaction. Nothing here touches the database.
+ */
+
+export function buildSetPublishedOps(id: string, isPublished: boolean): AuditedOp[] {
+  return [
+    {
+      kind: 'update',
+      table: 'layout_blocks',
+      match: { id },
+      values: { is_published: isPublished },
+    },
+  ]
 }
 
-export async function updateBlockText(
+export function buildBlockTextOps(
   id: string,
   locale: Locale,
   text: Record<string, unknown>,
-): Promise<void> {
-  const { error } = await getServiceClient()
-    .from('layout_block_translations')
-    .upsert({ block_id: id, locale, ...toTranslationColumns(text) }, {
-      onConflict: 'block_id,locale',
-    })
-  if (error) throw error
+): AuditedOp[] {
+  return [
+    {
+      kind: 'upsert',
+      table: 'layout_block_translations',
+      match: { block_id: id, locale },
+      values: toTranslationColumns(text),
+    },
+  ]
+}
+
+export function buildRemoveBlockOps(id: string): AuditedOp[] {
+  // Translations go with it via ON DELETE CASCADE. A layout block is
+  // configuration, not a record of an act — unlike a post, which is archived.
+  return [{ kind: 'delete', table: 'layout_blocks', match: { id } }]
 }
 
 /**
@@ -145,6 +164,53 @@ export async function updateBlockText(
  * instead of the whole layout — and so a concurrent edit to a third block
  * cannot be clobbered by a wholesale rewrite.
  */
+/**
+ * Describe a reorder as operations: read the current order, then emit the
+ * three position writes that swap two blocks.
+ *
+ * The read happens outside the transaction, which is a real if narrow race —
+ * two editors reordering the same layout in the same second could interleave.
+ * The swap itself is now atomic and audited, which is the part that matters;
+ * closing the read race needs `select ... for update`, and that needs this to
+ * become a bespoke function rather than a list of ops.
+ */
+export async function buildReorderOps(
+  id: string,
+  direction: 'up' | 'down',
+): Promise<AuditedOp[]> {
+  const supabase = getServiceClient()
+  const layout = await layoutId()
+  if (!layout) return []
+
+  const { data, error } = await supabase
+    .from('layout_blocks')
+    .select('id, position, region')
+    .eq('layout_id', layout)
+    .order('position', { ascending: true })
+  if (error) throw error
+
+  const rows = (data ?? []) as Array<{ id: string; position: number; region: string }>
+  const current = rows.find((r) => r.id === id)
+  if (!current) return []
+
+  // Only reorder within the same region — moving a `main` block above an
+  // `aside` one would be meaningless.
+  const siblings = rows.filter((r) => r.region === current.region)
+  const index = siblings.findIndex((r) => r.id === id)
+  const target = direction === 'up' ? siblings[index - 1] : siblings[index + 1]
+  if (!target) return []
+
+  // A two-step swap through a scratch value: `position` is not unique, but
+  // going straight to the target's number would briefly duplicate it, which
+  // makes the ordering ambiguous to any read landing in between.
+  const scratch = -Math.abs(current.position) - 1
+  return [
+    { kind: 'update', table: 'layout_blocks', match: { id: current.id }, values: { position: scratch } },
+    { kind: 'update', table: 'layout_blocks', match: { id: target.id }, values: { position: current.position } },
+    { kind: 'update', table: 'layout_blocks', match: { id: current.id }, values: { position: target.position } },
+  ]
+}
+
 export async function reorderBlock(
   id: string,
   direction: 'up' | 'down',
@@ -340,4 +406,61 @@ export async function archivePost(id: string): Promise<void> {
     .update({ status: 'archived' })
     .eq('id', id)
   if (error) throw error
+}
+
+export function buildArchivePostOps(id: string): AuditedOp[] {
+  return [{ kind: 'update', table: 'posts', match: { id }, values: { status: 'archived' } }]
+}
+
+/**
+ * Describe saving an article: the row, then its translation for this locale.
+ *
+ * The id is resolved by the caller so the ops can reference it — a new post
+ * gets a client-generated uuid, which is safe because `slug` carries the
+ * uniqueness that matters and the id is opaque.
+ */
+export function buildSavePostOps(
+  post: {
+    id: string
+    slug: string
+    title: string
+    publishedAt: string
+    status: 'draft' | 'published' | 'scheduled'
+    featuredImage: string
+    excerpt: string
+  },
+  locale: Locale,
+  categoryId: string | null,
+  exists: boolean,
+): AuditedOp[] {
+  const row = {
+    slug: post.slug,
+    category_id: categoryId,
+    status: post.status,
+    published_at: new Date(`${post.publishedAt}T00:00:00Z`).toISOString(),
+    featured_image_url: post.featuredImage || null,
+  }
+
+  return [
+    exists
+      ? { kind: 'update', table: 'posts', match: { id: post.id }, values: row }
+      : { kind: 'insert', table: 'posts', values: { id: post.id, ...row } },
+    {
+      kind: 'upsert',
+      table: 'post_translations',
+      match: { post_id: post.id, locale },
+      values: { title: post.title, excerpt: post.excerpt || null },
+    },
+  ]
+}
+
+/** Resolves a category slug to its id. A read, so it runs before the write. */
+export async function categoryIdForSlug(slug: string): Promise<string | null> {
+  const { data, error } = await getServiceClient()
+    .from('post_categories')
+    .select('id')
+    .eq('slug', slug)
+    .maybeSingle()
+  if (error) throw error
+  return (data?.id as string | undefined) ?? null
 }

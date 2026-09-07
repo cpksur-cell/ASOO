@@ -17,6 +17,7 @@ import 'server-only'
 
 import { normalizeArabic } from '@/i18n/format'
 import type { Locale } from '@/i18n/config'
+import type { AuditedOp } from '@/lib/audit/atomic'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
 import { getServiceClient } from '@/lib/supabase/server'
 
@@ -186,9 +187,8 @@ export async function getAdminMember(id: string): Promise<AdminMember | null> {
   return data ? mapRow(data as unknown as Row) : null
 }
 
-export async function updateMember(id: string, patch: MemberPatch): Promise<AdminMember | null> {
-  const supabase = getServiceClient()
-
+/** The `members` columns a patch touches, with codes already resolved to ids. */
+async function memberRow(patch: MemberPatch): Promise<Record<string, unknown>> {
   const row: Record<string, unknown> = {}
   if (patch.licenseNumber !== undefined) {
     // Empty means "still not recorded", which is NULL — not an empty string,
@@ -198,6 +198,7 @@ export async function updateMember(id: string, patch: MemberPatch): Promise<Admi
   if (patch.status !== undefined) row.status = patch.status
   if (patch.isDirectoryVisible !== undefined) row.is_directory_visible = patch.isDirectoryVisible
 
+  // Reference lookups, not writes — safe to resolve before the transaction.
   const govId = await resolveId('governorates', patch.governorateCode)
   if (govId !== undefined) row.governorate_id = govId
   const catId = await resolveId('member_categories', patch.categoryCode)
@@ -206,60 +207,77 @@ export async function updateMember(id: string, patch: MemberPatch): Promise<Admi
   // Keep the Arabic search key in step with the Arabic name.
   if (patch.fullNameAr !== undefined) row.search_normalized = normalizeArabic(patch.fullNameAr)
 
-  if (Object.keys(row).length > 0) {
-    const { error } = await supabase.from('members').update(row).eq('id', id)
-    if (error) throw error
-  }
-
-  const translations: Array<Record<string, unknown>> = []
-  if (patch.fullNameAr !== undefined || patch.officeNameAr !== undefined) {
-    translations.push({
-      member_id: id,
-      locale: 'ar',
-      full_name: patch.fullNameAr ?? '',
-      office_name: patch.officeNameAr ?? null,
-    })
-  }
-  if (patch.fullNameEn !== undefined || patch.officeNameEn !== undefined) {
-    translations.push({
-      member_id: id,
-      locale: 'en',
-      full_name: patch.fullNameEn ?? '',
-      office_name: patch.officeNameEn ?? null,
-    })
-  }
-  if (translations.length > 0) {
-    const { error } = await supabase
-      .from('member_translations')
-      .upsert(translations, { onConflict: 'member_id,locale' })
-    if (error) throw error
-  }
-
-  return getAdminMember(id)
+  return row
 }
 
 /**
- * Apply the same change to many members at once — the point of the screen,
- * since the roster arrived with several hundred rows missing the same fields.
+ * Describe a single member correction as operations, for `withAtomicAudit`.
+ *
+ * These are BUILT, not executed. The caller hands them to `audited_write`,
+ * which applies them and records the audit row in one transaction — so a
+ * correction to a membership record can never land without its trail.
+ *
+ * Only fields the caller actually sent are included. That is not tidiness: the
+ * previous version wrote `full_name: patch.fullNameAr ?? ''` whenever EITHER
+ * the name or the office was present, so a call carrying only an office name
+ * blanked the member's Arabic name. The admin form always sends both, so it
+ * was unreachable there — but a server action is a public HTTP endpoint, and
+ * `{ id, officeNameAr }` was enough to erase a real person's name.
  */
-export async function bulkUpdateMembers(
+export async function buildMemberUpdateOps(
+  id: string,
+  patch: MemberPatch,
+): Promise<AuditedOp[]> {
+  const ops: AuditedOp[] = []
+
+  const row = await memberRow(patch)
+  if (Object.keys(row).length > 0) {
+    ops.push({ kind: 'update', table: 'members', match: { id }, values: row })
+  }
+
+  for (const [locale, name, office] of [
+    ['ar', patch.fullNameAr, patch.officeNameAr],
+    ['en', patch.fullNameEn, patch.officeNameEn],
+  ] as const) {
+    if (name === undefined && office === undefined) continue
+
+    const values: Record<string, unknown> = {}
+    if (name !== undefined) values.full_name = name
+    if (office !== undefined) values.office_name = office === '' ? null : office
+
+    // `full_name` is NOT NULL, so a row that does not exist yet cannot be
+    // created from an office name alone. Update it if it is there; only insert
+    // when we actually have the name the column requires.
+    ops.push({
+      kind: name === undefined ? 'update' : 'upsert',
+      table: 'member_translations',
+      match: { member_id: id, locale },
+      values,
+    })
+  }
+
+  return ops
+}
+
+/**
+ * Describe the same change applied to many members.
+ *
+ * One operation per member rather than a single `IN` update. It costs more
+ * statements inside the one transaction, and buys a per-member before/after
+ * snapshot in the audit row — so after a 400-row bulk edit you can see exactly
+ * what each record used to say, not just which ids were in the batch.
+ */
+export async function buildBulkMemberOps(
   ids: string[],
   patch: Pick<MemberPatch, 'governorateCode' | 'categoryCode' | 'status' | 'isDirectoryVisible'>,
-): Promise<number> {
-  if (ids.length === 0) return 0
-
-  const row: Record<string, unknown> = {}
-  if (patch.status !== undefined) row.status = patch.status
-  if (patch.isDirectoryVisible !== undefined) row.is_directory_visible = patch.isDirectoryVisible
-
-  const govId = await resolveId('governorates', patch.governorateCode)
-  if (govId !== undefined) row.governorate_id = govId
-  const catId = await resolveId('member_categories', patch.categoryCode)
-  if (catId !== undefined) row.category_id = catId
-
-  if (Object.keys(row).length === 0) return 0
-
-  const { error } = await getServiceClient().from('members').update(row).in('id', ids)
-  if (error) throw error
-  return ids.length
+): Promise<AuditedOp[]> {
+  if (ids.length === 0) return []
+  const row = await memberRow(patch)
+  if (Object.keys(row).length === 0) return []
+  return ids.map((id) => ({
+    kind: 'update' as const,
+    table: 'members',
+    match: { id },
+    values: row,
+  }))
 }

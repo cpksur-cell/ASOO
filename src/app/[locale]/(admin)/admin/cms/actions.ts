@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { assertPermission, AuthError } from '@/lib/auth/server'
 import { withAudit } from '@/lib/audit'
+import { withAtomicAudit } from '@/lib/audit/atomic'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
 import * as cms from '@/lib/data/cms-admin'
 import {
@@ -93,20 +94,23 @@ export async function reorderBlockAction(input: unknown): Promise<ActionResult<v
   const parsed = reorderSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'INVALID' }
   const { id, direction } = parsed.data
-  const locale = localeOf(parsed.data.locale)
 
   return guard('layout', 'manage', async () => {
-    const before = live()
-      ? (await cms.listBlocks(locale)).map((b) => ({ id: b.id, position: b.position }))
-      : listStoredBlocks().map((b) => ({ id: b.id, position: b.position }))
-
-    await withAudit(
-      { action: 'layout.reorder', entityType: 'layout_block', entityId: id, before },
-      async () =>
-        live()
-          ? cms.reorderBlock(id, direction)
-          : reorderStoredBlock(id, direction).map((b) => ({ id: b.id, position: b.position })),
-    )
+    if (live()) {
+      const ops = await cms.buildReorderOps(id, direction)
+      if (ops.length === 0) return
+      await withAtomicAudit(
+        { action: 'layout.reorder', entityType: 'layout_block', entityId: id },
+        ops,
+      )
+    } else {
+      const before = listStoredBlocks().map((b) => ({ id: b.id, position: b.position }))
+      await withAudit(
+        { action: 'layout.reorder', entityType: 'layout_block', entityId: id, before },
+        async () =>
+          reorderStoredBlock(id, direction).map((b) => ({ id: b.id, position: b.position })),
+      )
+    }
     revalidatePublic([''])
   })
 }
@@ -122,15 +126,16 @@ export async function setBlockPublishedAction(input: unknown): Promise<ActionRes
   const { id, isPublished } = parsed.data
 
   return guard('layout', 'manage', async () => {
-    await withAudit(
-      {
-        action: isPublished ? 'layout.publish' : 'layout.unpublish',
-        entityType: 'layout_block',
-        entityId: id,
-      },
-      async () =>
-        live() ? cms.setBlockPublished(id, isPublished) : setStoredBlockPublished(id, isPublished),
-    )
+    const ctx = {
+      action: isPublished ? 'layout.publish' : 'layout.unpublish',
+      entityType: 'layout_block',
+      entityId: id,
+    }
+    if (live()) {
+      await withAtomicAudit(ctx, cms.buildSetPublishedOps(id, isPublished))
+    } else {
+      await withAudit(ctx, async () => setStoredBlockPublished(id, isPublished))
+    }
     revalidatePublic([''])
   })
 }
@@ -148,15 +153,18 @@ export async function updateBlockTextAction(input: unknown): Promise<ActionResul
   const locale = localeOf(parsed.data.locale)
 
   return guard('layout', 'manage', async () => {
-    const before = live()
-      ? ((await cms.listBlocks(locale)).find((b) => b.id === id)?.text ?? null)
-      : (listStoredBlocks().find((b) => b.id === id)?.text ?? null)
-
-    await withAudit(
-      { action: 'layout.update', entityType: 'layout_block', entityId: id, before },
-      async () =>
-        live() ? cms.updateBlockText(id, locale, text) : updateStoredBlockText(id, text),
-    )
+    if (live()) {
+      await withAtomicAudit(
+        { action: 'layout.update', entityType: 'layout_block', entityId: id },
+        cms.buildBlockTextOps(id, locale, text),
+      )
+    } else {
+      const before = listStoredBlocks().find((b) => b.id === id)?.text ?? null
+      await withAudit(
+        { action: 'layout.update', entityType: 'layout_block', entityId: id, before },
+        async () => updateStoredBlockText(id, text),
+      )
+    }
     revalidatePublic([''])
   })
 }
@@ -167,19 +175,25 @@ export async function removeBlockAction(input: unknown): Promise<ActionResult<vo
     .safeParse(input)
   if (!parsed.success) return { ok: false, error: 'INVALID' }
   const { id } = parsed.data
-  const locale = localeOf(parsed.data.locale)
 
   return guard('layout', 'manage', async () => {
-    // Capture the block before it goes — a removal with no record of what was
-    // removed is not an audit trail.
-    const before = live()
-      ? ((await cms.listBlocks(locale)).find((b) => b.id === id) ?? null)
-      : (listStoredBlocks().find((b) => b.id === id) ?? null)
-
-    await withAudit(
-      { action: 'layout.remove', entityType: 'layout_block', entityId: id, before },
-      async () => (live() ? cms.removeBlock(id) : removeStoredBlock(id)),
-    )
+    if (live()) {
+      // The deleted row is captured by the database itself as `before`, so the
+      // trail records exactly what was removed.
+      await withAtomicAudit(
+        { action: 'layout.remove', entityType: 'layout_block', entityId: id },
+        cms.buildRemoveBlockOps(id),
+      )
+    } else {
+      // Capture the block before it goes — a removal with no record of what
+      // was removed is not an audit trail. In live mode the database does this
+      // itself, inside the transaction.
+      const before = listStoredBlocks().find((b) => b.id === id) ?? null
+      await withAudit(
+        { action: 'layout.remove', entityType: 'layout_block', entityId: id, before },
+        async () => removeStoredBlock(id),
+      )
+    }
     revalidatePublic([''])
   })
 }
@@ -212,15 +226,23 @@ export async function savePostAction(input: unknown): Promise<ActionResult<void>
 
   return guard('posts', 'write', async () => {
     const before = live() ? await cms.getPost(post.id, locale) : getStoredPost(post.id)
-    await withAudit(
-      {
-        action: before ? 'post.update' : 'post.create',
-        entityType: 'post',
-        entityId: post.id,
-        before,
-      },
-      async () => (live() ? cms.upsertPost(post, locale) : upsertStoredPost(post)),
-    )
+    const ctx = {
+      action: before ? 'post.update' : 'post.create',
+      entityType: 'post',
+      entityId: post.id,
+    }
+
+    if (live()) {
+      // Reads first — resolving the category and checking existence are
+      // lookups, not writes, so they belong outside the transaction.
+      const categoryId = await cms.categoryIdForSlug(post.category)
+      await withAtomicAudit(
+        ctx,
+        cms.buildSavePostOps(post, locale, categoryId, Boolean(before)),
+      )
+    } else {
+      await withAudit({ ...ctx, before }, async () => upsertStoredPost(post))
+    }
     revalidatePublic(['', '/news', `/news/${post.slug}`])
   })
 }
@@ -240,10 +262,17 @@ export async function archivePostAction(input: unknown): Promise<ActionResult<vo
   return guard('posts', 'publish', async () => {
     const before = live() ? await cms.getPost(id, locale) : getStoredPost(id)
     if (!before) return
-    await withAudit(
-      { action: 'post.archive', entityType: 'post', entityId: id, before },
-      async () => (live() ? cms.archivePost(id) : archiveStoredPost(id)),
-    )
+    if (live()) {
+      await withAtomicAudit(
+        { action: 'post.archive', entityType: 'post', entityId: id },
+        cms.buildArchivePostOps(id),
+      )
+    } else {
+      await withAudit(
+        { action: 'post.archive', entityType: 'post', entityId: id, before },
+        async () => archiveStoredPost(id),
+      )
+    }
     revalidatePublic(['', '/news'])
   })
 }

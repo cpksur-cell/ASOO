@@ -17,6 +17,7 @@ import 'server-only'
  */
 
 import { getUserSession } from '@/lib/auth/server'
+import type { AuditedOp } from '@/lib/audit/atomic'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
 import { getServiceClient } from '@/lib/supabase/server'
 import type { ApprovalRow, OrderRow, ReviewRow, SubmissionRow } from '@/lib/supabase/types'
@@ -207,6 +208,64 @@ export async function getApprovalByCode(code: string): Promise<StoredApproval | 
 
 /* ----------------------------------------------------------------- writes */
 
+/**
+ * Describe a report submission as operations.
+ *
+ * Two writes: supersede whatever open submission the order already has, then
+ * insert the new one. Reading the priors to compute the next version number
+ * happens first, outside the transaction — the same read-then-write race the
+ * previous version had, unchanged. What is new is that the supersede and the
+ * insert can no longer half-happen: an order cannot end up with two open
+ * submissions, or with its previous one superseded and no replacement.
+ */
+export async function buildSubmissionOps(input: {
+  orderId: string
+  submittedByUid: string
+  fileType: ReportFileType
+  fileName: string
+  fileSize: number
+  note: string
+  storagePath?: string
+  checksum?: string | null
+}): Promise<AuditedOp[]> {
+  const { data: priors, error } = await getServiceClient()
+    .from('report_submissions')
+    .select('id, version, status')
+    .eq('order_id', input.orderId)
+  if (error) throw error
+
+  const rows = (priors ?? []) as Array<{ id: string; version: number; status: string }>
+  const ops: AuditedOp[] = rows
+    .filter((p) => OPEN_STATUSES.includes(p.status as SubmissionStatus))
+    .map((p) => ({
+      kind: 'update' as const,
+      table: 'report_submissions',
+      match: { id: p.id },
+      values: { status: 'superseded' },
+    }))
+
+  const version = rows.reduce((max, p) => Math.max(max, p.version), 0) + 1
+
+  ops.push({
+    kind: 'insert',
+    table: 'report_submissions',
+    values: {
+      order_id: input.orderId,
+      submitted_by: input.submittedByUid,
+      file_type: input.fileType,
+      file_name: input.fileName,
+      file_size: input.fileSize,
+      storage_path: input.storagePath ?? '',
+      checksum: input.checksum ?? null,
+      version,
+      status: 'uploaded',
+      note: input.note,
+    },
+  })
+
+  return ops
+}
+
 export async function addSubmission(input: {
   orderId: string
   submittedByUid: string
@@ -265,6 +324,76 @@ const DECISION_FOR: Record<string, ReviewRow['decision']> = {
   approved: 'approved',
   rejected: 'rejected',
   revision_requested: 'revision_requested',
+}
+
+/**
+ * Describe a review decision as operations, for `withAtomicAudit`.
+ *
+ * A decision is two or three writes — the immutable review row, the
+ * submission's new status, and on approval the approval artifact. They used to
+ * be separate HTTP requests, so a failure between them could leave a
+ * submission marked approved with no approval issued, or an approval with no
+ * review recorded. One transaction removes that whole class of half-state.
+ *
+ * `approval_number` and `verification_code` are absent on purpose: both come
+ * from column defaults, so a client can never choose them, and the QR code
+ * cannot be predicted. `audited_write` returns the inserted row, which is how
+ * the reviewer is shown the code without a second query.
+ */
+export function buildDecisionOps(input: {
+  submissionId: string
+  orderId: string
+  status: SubmissionStatus
+  comment: string | null
+  reviewerId: string
+  reviewerRole: string | null
+  approval?: ApprovalDetails & { approvedByUid: string }
+}): AuditedOp[] {
+  const ops: AuditedOp[] = []
+  const decision = DECISION_FOR[input.status]
+
+  if (decision) {
+    ops.push({
+      kind: 'insert',
+      table: 'report_reviews',
+      values: {
+        submission_id: input.submissionId,
+        reviewer_id: input.reviewerId,
+        reviewer_role: input.reviewerRole,
+        decision,
+        comments: input.comment,
+      },
+    })
+  }
+
+  ops.push({
+    kind: 'update',
+    table: 'report_submissions',
+    match: { id: input.submissionId },
+    values: { status: input.status },
+  })
+
+  if (input.approval) {
+    const a = input.approval
+    ops.push({
+      kind: 'insert',
+      table: 'report_approvals',
+      values: {
+        submission_id: input.submissionId,
+        order_id: input.orderId,
+        approved_by: a.approvedByUid,
+        // Empty strings become NULL: "not recorded" and "recorded as blank"
+        // are different facts on a certificate.
+        dls_reference: a.dlsReference?.trim() || null,
+        basin: a.basin?.trim() || null,
+        plot: a.plot?.trim() || null,
+        survey_method: a.surveyMethod?.trim() || null,
+        notes: a.notes?.trim() || null,
+      },
+    })
+  }
+
+  return ops
 }
 
 /**

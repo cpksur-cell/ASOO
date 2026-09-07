@@ -10,6 +10,7 @@ import 'server-only'
  */
 
 import { getUserSession } from '@/lib/auth/server'
+import type { AuditedOp } from '@/lib/audit/atomic'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
 import { getServiceClient } from '@/lib/supabase/server'
 import type { ServiceRequestStatus, ServiceRequestType } from '@/lib/service-requests'
@@ -112,6 +113,52 @@ function memoryNumber(): string {
 }
 
 /* ----------------------------------------------------------------- creates */
+
+/**
+ * Describe creating a request, and its opening history row, as operations.
+ *
+ * The id is supplied rather than left to `gen_random_uuid()`, because the
+ * event row has to reference it and the operations are described before any
+ * of them runs. `request_number` is the opposite case and stays absent: it
+ * comes from the column default (`next_service_request_number()`), so a
+ * client cannot choose it, and `audited_write` hands the generated row back so
+ * the member still learns their number without a second query.
+ */
+export function buildCreateOps(input: {
+  id: string
+  type: ServiceRequestType
+  dlsKey: string
+  note: string
+  requesterUid: string
+  requesterName: string
+  requesterEmail: string
+}): AuditedOp[] {
+  return [
+    {
+      kind: 'insert',
+      table: 'service_requests',
+      values: {
+        id: input.id,
+        type: input.type,
+        dls_key: input.dlsKey,
+        note: input.note || null,
+        requester_user_id: input.requesterUid,
+        requester_name: input.requesterName || null,
+        requester_email: input.requesterEmail || null,
+      },
+    },
+    {
+      kind: 'insert',
+      table: 'service_request_events',
+      values: {
+        request_id: input.id,
+        actor_id: input.requesterUid,
+        actor_role: 'member',
+        action: 'created',
+      },
+    },
+  ]
+}
 
 export async function createServiceRequest(input: {
   type: ServiceRequestType
@@ -244,13 +291,65 @@ export async function listClosedRequests(limit = 20): Promise<ServiceRequest[]> 
 /* ------------------------------------------------------------------ writes */
 
 /**
- * Answer a request: move its status, record what was handed back, and append
- * an immutable event row.
+ * Describe answering a request as operations, for `withAtomicAudit`.
  *
- * The event is written FIRST. If the status update then fails, the queue still
- * shows the request open and the history shows an attempt — which is
- * recoverable. The reverse order would close a request with no record of who
- * closed it, which is not.
+ * Two writes — the immutable event row and the status change — which used to
+ * be two HTTP requests with a comment explaining which order failed less
+ * badly. They now go in one transaction, so neither can land without the
+ * other and the ordering argument is moot.
+ */
+export function buildAnswerOps(input: {
+  id: string
+  status: Extract<ServiceRequestStatus, 'fulfilled' | 'rejected' | 'in_progress'>
+  responseData?: string
+  responseNote?: string
+  actorId: string
+  actorRole: string | null
+}): AuditedOp[] {
+  const action =
+    input.status === 'fulfilled'
+      ? 'fulfilled'
+      : input.status === 'rejected'
+        ? 'rejected'
+        : 'taken'
+
+  const patch: Record<string, unknown> = { status: input.status }
+  if (input.status !== 'in_progress') {
+    // Empty stays NULL: "answered with nothing" and "not answered" are
+    // different facts, and the member's page renders them differently.
+    patch.response_data = input.responseData?.trim() || null
+    patch.response_note = input.responseNote?.trim() || null
+    patch.responded_by = input.actorId
+    patch.responded_at = new Date().toISOString()
+  }
+
+  return [
+    {
+      kind: 'insert',
+      table: 'service_request_events',
+      values: {
+        request_id: input.id,
+        actor_id: input.actorId,
+        actor_role: input.actorRole,
+        action,
+        message: input.responseNote?.trim() || null,
+      },
+    },
+    {
+      kind: 'update',
+      table: 'service_requests',
+      match: { id: input.id },
+      values: patch,
+    },
+  ]
+}
+
+/**
+ * Answer a request — the in-memory fallback path.
+ *
+ * Kept for the no-Supabase case only. When Supabase is configured the action
+ * uses `buildAnswerOps` with `withAtomicAudit` instead, so the two writes and
+ * the audit row share one transaction.
  */
 export async function answerServiceRequest(input: {
   id: string

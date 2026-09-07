@@ -30,7 +30,7 @@ These are not preferences. Violating any of them is a defect.
 2. **No hardcoded user-facing strings — ever.** Every string goes through the i18n layer from the first commit. A literal Arabic or English string in a component is a bug, including in error messages, `aria-label`s, and toast text.
 3. **No payment secret reaches the client.** Gateway credentials, webhook signing keys, and provider endpoints live in **Vercel environment variables** (Google Secret Manager was the Firebase-era plan) and are read only in server code.
 4. **Never trust a client-supplied amount.** The server recomputes every charge from the invoice in the database. A price arriving in a request body is treated as untrusted noise.
-5. **Every admin mutation writes an audit row.** No exceptions. Enforced by the shared mutation wrapper `withAudit()` — do not bypass it. **Known gap, stated honestly:** it is not yet *atomic*. supabase-js issues each statement over HTTP and cannot hold a transaction open across them, so the mutation has already committed when the audit insert runs. A failure there throws and logs enough to reconstruct, but the change is applied and unrecorded. Closing this means moving each mutation behind a Postgres function that writes both in one transaction. Do not write new code that relies on the atomicity — it is not there.
+5. **Every admin mutation writes an audit row, in the same transaction as the change.** Use `withAtomicAudit()` (`src/lib/audit/atomic.ts`), which describes the writes and hands them to the `audited_write` Postgres function. PostgREST runs one RPC call in one transaction, so Postgres — not application ordering — guarantees that the change and its record commit together or not at all. Two consequences worth knowing: `before`/`after` are captured by the database from the rows it actually touched, so the trail records what happened rather than what the code believed; and values the DB generates (`request_number`, `approval_number`, `verification_code`) come back from the call, so a client can never supply them. The older `withAudit()` remains **only** for the no-Supabase fallback, where there is no transaction to join — do not use it on a live path.
 6. **Financial tables are append-only.** Corrections are new rows (credit notes, adjustments), never `UPDATE`s over history. Government audit requires the original record to survive.
 7. **Money is integer fils.** See §7.
 8. **WCAG 2.1 AA is the floor**, not a stretch goal.
@@ -283,7 +283,7 @@ A change is not done until all of these hold:
 - [ ] Keyboard-navigable, visible focus, correct `lang`/`dir`, form errors announced
 - [ ] No hardcoded strings, no raw hex, no raw spacing values
 - [ ] If it touches money: amounts are integer fils, server-recomputed, and the state transition is legal
-- [ ] If it is an admin mutation: it goes through `withAudit()` and an audit row lands
+- [ ] If it is an admin mutation: it goes through `withAtomicAudit()`, and the audit row lands in the same transaction
 - [ ] If it changed the schema: the migration was human-reviewed before running
 
 ---

@@ -4,11 +4,11 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { assertPermission, AuthError } from '@/lib/auth/server'
-import { withAudit } from '@/lib/audit'
+import { withAtomicAudit } from '@/lib/audit/atomic'
 import {
-  bulkUpdateMembers,
+  buildBulkMemberOps,
+  buildMemberUpdateOps,
   getAdminMember,
-  updateMember,
   type MemberPatch,
 } from '@/lib/data/admin-members'
 
@@ -65,14 +65,16 @@ export async function updateMemberAction(input: unknown): Promise<MemberEditResu
     }
     if (Object.keys(patch).length === 0) return { ok: true }
 
-    await withAudit(
-      {
-        action: 'member.update',
-        entityType: 'member',
-        entityId: id,
-        before,
-      },
-      async () => updateMember(id, patch),
+    const ops = await buildMemberUpdateOps(id, patch)
+    if (ops.length === 0) return { ok: true }
+
+    // Atomic: the member row, the translation rows and the audit record all
+    // commit together or not at all. `before` is captured inside the
+    // transaction by the database, so it reflects the row as it actually was
+    // at the moment of the write — not as it looked when we read it earlier.
+    await withAtomicAudit(
+      { action: 'member.update', entityType: 'member', entityId: id },
+      ops,
     )
 
     revalidatePath('/ar/admin/members')
@@ -115,17 +117,25 @@ export async function bulkUpdateMembersAction(input: unknown): Promise<BulkResul
   try {
     await assertPermission('members', 'update')
 
-    const count = await withAudit(
+    const ops = await buildBulkMemberOps(ids, patch)
+    if (ops.length === 0) return { ok: false, error: 'NOTHING' }
+
+    // One transaction for the whole batch. Previously a failure part-way
+    // through left some members changed, some not, and possibly no audit row
+    // at all — the worst outcome for the highest-blast-radius action in the
+    // system. Now the batch is all-or-nothing, and the audit row carries a
+    // before/after snapshot per member rather than just the list of ids.
+    const { rows } = await withAtomicAudit(
       {
         action: 'member.bulk_update',
         entityType: 'member',
-        // No single entity — record the batch size as the subject and keep the
-        // ids in `before` so the affected set is recoverable.
+        // No single subject — name the batch, and the per-member detail lives
+        // in the recorded before/after.
         entityId: `batch:${ids.length}`,
-        before: { ids, patch },
       },
-      async () => bulkUpdateMembers(ids, patch),
+      ops,
     )
+    const count = rows.filter((r) => r.length > 0).length
 
     revalidatePath('/ar/admin/members')
     revalidatePath('/en/admin/members')

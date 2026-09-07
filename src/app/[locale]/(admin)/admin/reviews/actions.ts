@@ -3,10 +3,13 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
-import { assertPermission, AuthError } from '@/lib/auth/server'
+import { assertPermission, AuthError, getUserSession } from '@/lib/auth/server'
 import { withAudit } from '@/lib/audit'
+import { withAtomicAudit } from '@/lib/audit/atomic'
+import { isSupabaseConfigured } from '@/lib/supabase/config'
 import {
   addApproval,
+  buildDecisionOps,
   getApprovalForSubmission,
   getSubmission,
   setSubmissionDecision,
@@ -48,8 +51,9 @@ const schema = z.object({
  * `report.reject` / `report.revision` without a reason, and the member needs
  * to know what to fix.
  *
- * Every path is audited. The decision and the submission-status change happen
- * together; Phase 3 makes them one transaction.
+ * Every path is audited ATOMICALLY when Supabase is configured: the review
+ * row, the status change and (on approval) the approval artifact commit in one
+ * transaction with the audit record, or none of them do.
  */
 export async function reviewReportAction(input: unknown): Promise<ReviewResult> {
   const parsed = schema.safeParse(input)
@@ -71,44 +75,90 @@ export async function reviewReportAction(input: unknown): Promise<ReviewResult> 
       const existing = await getApprovalForSubmission(submissionId)
       if (existing) return { ok: true, verificationCode: existing.verificationCode }
 
-      const result = await withAudit(
-        {
-          action: 'report.approve',
-          entityType: 'report_submission',
-          entityId: submissionId,
-          before: { status: submission.status },
-        },
-        async () => {
-          await setSubmissionDecision(submissionId, 'approved', comment || null)
-          const session = await assertPermission('reports', 'approve')
-          // The data source (DB or fallback) owns the approval number and the
-          // random verification code and returns both — a client never sets them.
-          const approval = await addApproval({
+      const session = await assertPermission('reports', 'approve')
+      const ctx = {
+        action: 'report.approve',
+        entityType: 'report_submission',
+        entityId: submissionId,
+      }
+
+      let verificationCode: string
+      if (isSupabaseConfigured()) {
+        /*
+         * Three writes in one transaction: the immutable review row, the
+         * submission's new status, and the approval artifact. Previously these
+         * were separate requests, so a failure between them could leave a
+         * submission marked approved with no approval issued — a report the
+         * member is told is approved but which no QR code will ever verify.
+         *
+         * The approval number and verification code come from column defaults,
+         * so neither this code nor a client can choose them; they are read back
+         * off the inserted row.
+         */
+        const { rows } = await withAtomicAudit<{ verification_code: string }>(
+          ctx,
+          buildDecisionOps({
             submissionId,
             orderId: submission.orderId,
-            approvedByUid: session.uid,
-            ...details,
-          })
-          return { verificationCode: approval.verificationCode }
-        },
-      )
+            status: 'approved',
+            comment: comment || null,
+            reviewerId: session.uid,
+            reviewerRole: session.role,
+            approval: { ...details, approvedByUid: session.uid },
+          }),
+        )
+        // The approval insert is the last op.
+        verificationCode = rows.at(-1)?.[0]?.verification_code ?? ''
+      } else {
+        const result = await withAudit(
+          { ...ctx, before: { status: submission.status } },
+          async () => {
+            await setSubmissionDecision(submissionId, 'approved', comment || null)
+            const approval = await addApproval({
+              submissionId,
+              orderId: submission.orderId,
+              approvedByUid: session.uid,
+              ...details,
+            })
+            return { verificationCode: approval.verificationCode }
+          },
+        )
+        verificationCode = result.verificationCode
+      }
+
       revalidatePath('/ar/admin/reviews')
       revalidatePath('/en/admin/reviews')
-      return { ok: true, verificationCode: result.verificationCode }
+      return { ok: true, verificationCode }
     }
 
     const action = decision === 'rejected' ? 'report.reject' : 'report.revision'
     const nextStatus = decision === 'rejected' ? 'rejected' : 'revision_requested'
-    await withAudit(
-      {
-        action,
-        entityType: 'report_submission',
-        entityId: submissionId,
-        reason: comment,
-        before: { status: submission.status },
-      },
-      async () => setSubmissionDecision(submissionId, nextStatus, comment),
-    )
+    const ctx = {
+      action,
+      entityType: 'report_submission',
+      entityId: submissionId,
+      reason: comment,
+    }
+
+    if (isSupabaseConfigured()) {
+      const session = await getUserSession()
+      await withAtomicAudit(
+        ctx,
+        buildDecisionOps({
+          submissionId,
+          orderId: submission.orderId,
+          status: nextStatus,
+          comment,
+          reviewerId: session?.uid ?? 'system',
+          reviewerRole: session?.role ?? null,
+        }),
+      )
+    } else {
+      await withAudit(
+        { ...ctx, before: { status: submission.status } },
+        async () => setSubmissionDecision(submissionId, nextStatus, comment),
+      )
+    }
     revalidatePath('/ar/admin/reviews')
     revalidatePath('/en/admin/reviews')
     return { ok: true }

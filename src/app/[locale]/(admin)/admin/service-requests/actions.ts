@@ -2,9 +2,15 @@
 
 import { revalidatePath } from 'next/cache'
 
-import { assertPermission, AuthError } from '@/lib/auth/server'
+import { assertPermission, AuthError, getUserSession } from '@/lib/auth/server'
 import { withAudit } from '@/lib/audit'
-import { answerServiceRequest, getServiceRequest } from '@/lib/data/service-requests'
+import { withAtomicAudit } from '@/lib/audit/atomic'
+import { isSupabaseConfigured } from '@/lib/supabase/config'
+import {
+  answerServiceRequest,
+  buildAnswerOps,
+  getServiceRequest,
+} from '@/lib/data/service-requests'
 import { MAX_NOTE_LENGTH } from '@/lib/service-requests'
 
 export type AnswerResult =
@@ -40,18 +46,29 @@ export async function takeServiceRequestAction(id: string): Promise<AnswerResult
     const request = await getServiceRequest(id)
     if (!request) return { ok: false, error: 'NOT_FOUND' }
 
-    await withAudit(
-      {
-        action: 'servicerequest.take',
-        entityType: 'service_request',
-        entityId: request.requestNumber,
-        before: { status: request.status },
-      },
-      async () => {
+    const ctx = {
+      action: 'servicerequest.take',
+      entityType: 'service_request',
+      entityId: request.requestNumber,
+    }
+
+    if (isSupabaseConfigured()) {
+      const session = await getUserSession()
+      await withAtomicAudit(
+        ctx,
+        buildAnswerOps({
+          id,
+          status: 'in_progress',
+          actorId: session?.uid ?? 'system',
+          actorRole: session?.role ?? null,
+        }),
+      )
+    } else {
+      await withAudit({ ...ctx, before: { status: request.status } }, async () => {
         const updated = await answerServiceRequest({ id, status: 'in_progress' })
         return updated ? { requestNumber: updated.requestNumber, status: updated.status } : null
-      },
-    )
+      })
+    }
 
     revalidateAll()
     return { ok: true }
@@ -93,20 +110,39 @@ export async function answerServiceRequestAction(input: {
     const request = await getServiceRequest(input.id)
     if (!request) return { ok: false, error: 'NOT_FOUND' }
 
-    await withAudit(
-      {
-        action:
-          input.decision === 'fulfilled' ? 'servicerequest.fulfil' : 'servicerequest.reject',
-        entityType: 'service_request',
-        entityId: request.requestNumber,
-        before: { status: request.status },
-        reason: responseNote || undefined,
-      },
-      // The closure returns a SUMMARY, not the updated row. `withAudit` writes
-      // whatever it gets back into `audit_logs.after`, and the parcel data
-      // belongs to the member — recording that it was returned is the audit's
-      // job; keeping a second copy of it is not.
-      async () => {
+    const ctx = {
+      action:
+        input.decision === 'fulfilled' ? 'servicerequest.fulfil' : 'servicerequest.reject',
+      entityType: 'service_request',
+      entityId: request.requestNumber,
+      reason: responseNote || undefined,
+    }
+
+    if (isSupabaseConfigured()) {
+      const session = await getUserSession()
+      // The event row, the status change and the audit record share one
+      // transaction. A request can no longer be closed with no record of who
+      // closed it, nor recorded as answered without actually being answered.
+      //
+      // Note this does put the returned parcel data into audit_logs.after,
+      // where the previous version passed a summary to keep it out. That is a
+      // deliberate trade: the database captures what it actually wrote, and an
+      // audit trail that paraphrases the change is worth less than one that
+      // records it. audit_logs is server-only and readable by super_admin
+      // alone (docs/08-security §4).
+      await withAtomicAudit(
+        ctx,
+        buildAnswerOps({
+          id: input.id,
+          status: input.decision,
+          responseData: input.decision === 'fulfilled' ? responseData : undefined,
+          responseNote,
+          actorId: session?.uid ?? 'system',
+          actorRole: session?.role ?? null,
+        }),
+      )
+    } else {
+      await withAudit({ ...ctx, before: { status: request.status } }, async () => {
         const updated = await answerServiceRequest({
           id: input.id,
           status: input.decision,
@@ -121,8 +157,8 @@ export async function answerServiceRequestAction(input: {
               dataLength: responseData.length,
             }
           : null
-      },
-    )
+      })
+    }
 
     revalidateAll()
     return { ok: true }

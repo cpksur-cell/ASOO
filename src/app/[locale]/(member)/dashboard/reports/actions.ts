@@ -4,7 +4,13 @@ import { revalidatePath } from 'next/cache'
 
 import { assertPermission, AuthError } from '@/lib/auth/server'
 import { withAudit } from '@/lib/audit'
-import { addSubmission, getOrderByNumber, getSubmission } from '@/lib/data/reports-source'
+import { withAtomicAudit } from '@/lib/audit/atomic'
+import {
+  addSubmission,
+  buildSubmissionOps,
+  getOrderByNumber,
+  getSubmission,
+} from '@/lib/data/reports-source'
 import { MAX_REPORT_BYTES, buildStoragePath, validateReportBytes } from '@/lib/reports-validate'
 import {
   createReportDownloadUrl,
@@ -88,30 +94,42 @@ export async function submitReportAction(formData: FormData): Promise<SubmitResu
     }
 
     try {
-      const submission = await withAudit(
-        {
-          action: 'report.submit',
-          entityType: 'report_submission',
-          entityId: order.id,
-        },
-        async () =>
-          addSubmission({
-            orderId: order.id,
-            submittedByUid: session.uid,
-            fileType: checked.type,
-            fileName: file.name,
-            fileSize: checked.bytes.length,
-            note,
-            storagePath,
-            checksum: checked.checksum,
-          }),
-      )
+      const ctx = {
+        action: 'report.submit',
+        entityType: 'report_submission',
+        entityId: order.id,
+      }
+      const args = {
+        orderId: order.id,
+        submittedByUid: session.uid,
+        fileType: checked.type,
+        fileName: file.name,
+        fileSize: checked.bytes.length,
+        note,
+        storagePath,
+        checksum: checked.checksum,
+      }
+
+      let submissionId: string
+      if (isSupabaseConfigured()) {
+        // Superseding the previous submission and inserting the new one now
+        // share a transaction with the audit row, so an order cannot be left
+        // with two open submissions or with none.
+        const { rows } = await withAtomicAudit<{ id: string }>(
+          ctx,
+          await buildSubmissionOps(args),
+        )
+        submissionId = rows.at(-1)?.[0]?.id ?? ''
+      } else {
+        const submission = await withAudit(ctx, async () => addSubmission(args))
+        submissionId = submission.id
+      }
 
       revalidatePath('/ar/dashboard/reports')
       revalidatePath('/en/dashboard/reports')
       revalidatePath('/ar/admin/reviews')
       revalidatePath('/en/admin/reviews')
-      return { ok: true, submissionId: submission.id }
+      return { ok: true, submissionId }
     } catch (err) {
       // The row did not land, so the object must not linger.
       await deleteReportFile(storagePath)

@@ -72,7 +72,7 @@ Find all three values in the Supabase dashboard under
 2. **Apply the schema.** Two options:
 
    **A. Supabase SQL Editor (no tooling):** open each file in `supabase/migrations/`
-   in ascending order (`0001` → `0013`) and run it, then run `supabase/seed.sql`.
+   in ascending order (`0001` → `0014`) and run it, then run `supabase/seed.sql`.
 
    **B. Supabase CLI (recommended, repeatable):**
    ```bash
@@ -107,6 +107,7 @@ Find all three values in the Supabase dashboard under
 | `0011_service_requests.sql` | Counter e-services: `service_requests` (electronic plate · unarchived change statement, keyed on the DLS key) and the append-only `service_request_events` history, RLS on with no anon policy |
 | `0012_permanent_records.sql` | Service requests and reviewed submissions are **permanent records**. `service_request_events` and `report_reviews` each had `ON DELETE CASCADE` *and* an append-only delete rule — a contradiction that made the parent undeletable behind an opaque 500. Both FKs become `ON DELETE RESTRICT`, both append-only rules stay, and `search_path` is pinned on the six helper functions that lacked it |
 | `0013_cms_content.sql` | Closes two gaps that kept the CMS off the public site: `posts.featured_image_url` (the uuid FK cannot hold a repository path) and the `badge_text` / `secondary_cta_label` / `view_all_label` columns the hero block actually uses, plus indexes for the homepage and news read paths |
+| `0014_atomic_audit.sql` | `audited_write(p_audit, p_ops)` — applies an ordered list of writes AND the audit row in one transaction, closing the gap where a mutation could commit and its record fail. Tables are allowlisted, every column is checked against the catalog, and values are bound through `jsonb_populate_record` rather than interpolated |
 | `seed.sql` | roles, 12 governorates, categories, demo user/member, demo orders/submissions/approval — mirrors the in-memory demo |
 
 ### Storage
@@ -186,6 +187,12 @@ membership.
 - **RLS is deny-by-default.** Even if the anon key leaks or is used from the
   browser, it can read only reference data and *published* content — never
   invoices, PII, report files, unpublished content, or the audit log.
+- **The audit trail is atomic.** Admin mutations go through `audited_write`
+  (0014), which performs the change and inserts the `audit_logs` row inside one
+  transaction. A failure anywhere rolls back everything, so "changed but not
+  recorded" is no longer a reachable state. `audit_logs` is deliberately absent
+  from that function's table allowlist — the trail cannot be written through
+  the same door it protects.
 - **Append-only enforced in the database.** `audit_logs` and `report_reviews`
   carry `ON UPDATE/DELETE DO INSTEAD NOTHING` rules, so history cannot be rewritten
   even by a bug in application code.

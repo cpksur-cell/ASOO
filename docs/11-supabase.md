@@ -94,7 +94,7 @@ Find all three values in the Supabase dashboard under
 | `0009_audit_integrity.sql` | Drops the FK on `audit_logs.actor_user_id` — an audit row is a historical fact and must never be blocked from recording, nor become a retention lock on a user |
 | `0010_reports_files.sql` | DXF + GML file types, structured approval columns (DLS reference, basin, plot, survey method, notes), and the PRIVATE `reports` storage bucket |
 | `0011_service_requests.sql` | Counter e-services: `service_requests` (electronic plate · unarchived change statement, keyed on the DLS key) and the append-only `service_request_events` history, RLS on with no anon policy |
-| `0012_service_request_delete.sql` | Drops the `no_delete` rule on `service_request_events` — it was incompatible with the parent's `ON DELETE CASCADE` and made a service request impossible to delete. `no_update` stays, so history still cannot be rewritten |
+| `0012_permanent_records.sql` | Service requests and reviewed submissions are **permanent records**. `service_request_events` and `report_reviews` each had `ON DELETE CASCADE` *and* an append-only delete rule — a contradiction that made the parent undeletable behind an opaque 500. Both FKs become `ON DELETE RESTRICT`, both append-only rules stay, and `search_path` is pinned on the six helper functions that lacked it |
 | `seed.sql` | roles, 12 governorates, categories, demo user/member, demo orders/submissions/approval — mirrors the in-memory demo |
 
 ### Storage
@@ -181,6 +181,27 @@ membership.
   `approval_number` come from Postgres sequences (never a racy `COUNT`), and
   `verification_code` is random — never derived from a sequential id, so approvals
   cannot be enumerated (docs/08-security §8).
+- **Permanent records.** `service_requests` and reviewed `report_submissions`
+  cannot be deleted: their history tables are append-only and the parent FKs are
+  `ON DELETE RESTRICT` (0012). An attempt fails with a named constraint
+  violation (`23503`) that says which record blocked it.
+- **`search_path` is pinned on every helper function** (0012), so a function
+  called by name from inside an RLS policy cannot be shadowed. No application
+  role can `CREATE` in `public`, so this is defence in depth rather than a fix
+  for a live hole.
+
+### Known advisor warnings, and why they stand
+
+Run `get_advisors` after any schema change. These are expected:
+
+| Warning | Why it stands |
+|---|---|
+| `rls_enabled_no_policy` on 9 tables | **Deliberate.** RLS on with no policy is deny-by-default — the posture 0006 chose. Anon and authenticated get nothing; the server reaches them with the service role after checking permission in the app layer. |
+| `extension_in_public` (`citext`, `pg_trgm`) | Cosmetic. Moving an extension after tables depend on its types is disruptive for no security gain. |
+| `handle_new_auth_user` callable via RPC | Not exploitable — it is a trigger function, and calling one directly errors. **Not** revoked on purpose: `EXECUTE` changes on the signup path risk breaking registration for a warning with no exploit behind it. |
+| `current_user_role` callable via RPC | Must keep `EXECUTE` for `anon`/`authenticated`: RLS policies that call it are evaluated with the caller's privileges, so revoking it would break `staff_read_*` reads. It only ever returns the caller's *own* role. |
+| `claim_membership` callable by `anon` | Returns `null` immediately when `auth.uid()` is null, so an anonymous call does nothing. |
+| Leaked-password protection disabled | A dashboard toggle worth enabling: *Authentication → Policies*. |
 
 ---
 

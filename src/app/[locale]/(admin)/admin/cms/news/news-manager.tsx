@@ -91,7 +91,7 @@ export function NewsManager({
 
   function save(post: DemoNewsItem) {
     startTransition(async () => {
-      const result = await savePostAction(post)
+      const result = await savePostAction({ ...post, locale })
       if (!result.ok) return reportFailure(result)
       setPosts((prev) => {
         const i = prev.findIndex((p) => p.id === post.id)
@@ -107,7 +107,7 @@ export function NewsManager({
 
   function archive(post: DemoNewsItem) {
     startTransition(async () => {
-      const result = await archivePostAction({ id: post.id })
+      const result = await archivePostAction({ id: post.id, locale })
       if (!result.ok) return reportFailure(result)
       setPosts((prev) =>
         prev.map((p) => (p.id === post.id ? { ...p, status: 'draft' as const } : p)),

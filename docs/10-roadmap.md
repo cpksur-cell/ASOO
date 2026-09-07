@@ -51,12 +51,21 @@ Documentation, schema, design tokens, and the agent operating manual. **No appli
 - **CMS rewritten** against server actions: news manager and homepage composer, both fully translated, with confirmation dialogs that name the specific consequence rather than asking "are you sure?".
 - **Standards debt cleared.** 146 hardcoded strings → 0. An undefined design token that silently rendered as no style across 8 files, fixed. Two new CI gates (`npm run audit:i18n`, `npm run audit:tokens`) prevent both classes of regression.
 
-**Known gap — the CMS does not yet drive the public site.** Admin writes go to
-`lib/data/store.ts`; the public pages still read `lib/data/seed.ts`. The two hold
-different shapes — the demo store carries flat single-language text, the seed
-carries per-locale objects. Bridging them with an adapter would be a bodge, so
-they stay separate until the Data Connect implementation of `ContentRepository`
-replaces both. Until then `revalidatePath` in the actions is a no-op.
+**RESOLVED — the CMS now drives the public site.** The composer and the news
+manager write the same Postgres rows the public pages read, so an edit appears
+on the site and `revalidatePath` is no longer a no-op. Verified end to end:
+editing the hero heading in `/ar/admin/cms/homepage` changed `/ar` and left
+`/en` untouched, and wrote a `layout.update` audit row.
+
+The shape mismatch that blocked this is gone rather than bridged. The old demo
+store carried flat single-language text while the seed carried per-locale
+objects; the resolution is that neither is the source any more — Postgres holds
+one translation row per locale, `cms-source.ts` resolves it for the public site,
+and `cms-admin.ts` writes the row for the locale the editor is working in.
+
+**Still on the seed:** documents, external links, and the `about` page body.
+They have no admin screen and no table, so moving them would create rows nobody
+can edit. They follow the screen that manages them.
 
 **Member dashboard — built and verified.** The complete member area now exists
 under `/[locale]/dashboard`, gated to the `member` role:

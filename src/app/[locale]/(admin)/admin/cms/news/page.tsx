@@ -4,6 +4,8 @@ import { createTranslator, getDictionary, isLocale, type Locale } from '@/i18n/c
 import { can } from '@/lib/auth/server'
 import { href } from '@/lib/routes'
 import { listStoredPosts } from '@/lib/data/store'
+import { listPosts as listCmsPosts } from '@/lib/data/cms-admin'
+import { isSupabaseConfigured } from '@/lib/supabase/config'
 import { NewsManager, type NewsLabels } from './news-manager'
 
 /**
@@ -32,7 +34,8 @@ export default async function AdminNewsPage({
   const labels: NewsLabels = {
     title: t('admin.newsTitle'),
     intro: t('admin.newsIntro'),
-    demoNotice: t('admin.demoDataNotice'),
+    // Blank once the screen is backed by Postgres — see the composer page.
+    demoNotice: isSupabaseConfigured() ? '' : t('admin.demoDataNotice'),
     newPost: t('admin.newPost'),
     editPost: t('admin.editPost'),
     colTitle: t('admin.title'),
@@ -62,5 +65,10 @@ export default async function AdminNewsPage({
     empty: t('admin.empty'),
   }
 
-  return <NewsManager labels={labels} initialPosts={listStoredPosts()} locale={typed} />
+  // Same rows the public /news page reads, so an edit here is visible there.
+  const initialPosts = isSupabaseConfigured()
+    ? await listCmsPosts(typed)
+    : listStoredPosts()
+
+  return <NewsManager labels={labels} initialPosts={initialPosts} locale={typed} />
 }

@@ -20,10 +20,21 @@ redeploy of source.
 | Orders · report submissions · reviews · approvals | **Supabase** when configured, else in-memory fallback |
 | Counter e-service requests (`service_requests`) | **Supabase** when configured, else in-memory fallback |
 | Audit log (`audit_logs`) | **Supabase** when configured, else in-memory fallback |
-| Public homepage / news / directory / members admin | Seed repository (Supabase tables exist and are seeded; read path wired in a follow-up) |
+| Homepage composition + news articles | **Supabase.** The admin CMS writes the same rows the public pages read — an edit in the composer or news manager appears on the site |
+| Member directory / members admin | **Supabase** |
+| Documents · external links · the `about` page body | Seed module. No admin screen and no table yet — see below |
 
-The full core schema is migrated and seeded regardless, so the follow-up passes
-only swap read paths — the data is already there.
+The split in the last row is deliberate, not half-finished. The homepage
+composer and the news manager are the only CMS screens that exist, so those are
+the only tables an editor can currently change. Moving documents, external links
+and the `about` body into Postgres now would add rows nobody has a screen to
+edit — they stay in the seed until the screen that manages them is built.
+
+**Seeding the CMS content:** `node scripts/seed-cms.mjs [--dry-run]` moves the
+seed module's categories, articles and homepage blocks into Postgres. It is
+idempotent (keyed on slugs, layout code, and a block's type + position) and
+never deletes, so a block an editor added is left alone. Run it once per
+environment after `0013`.
 
 ---
 
@@ -61,7 +72,7 @@ Find all three values in the Supabase dashboard under
 2. **Apply the schema.** Two options:
 
    **A. Supabase SQL Editor (no tooling):** open each file in `supabase/migrations/`
-   in ascending order (`0001` → `0012`) and run it, then run `supabase/seed.sql`.
+   in ascending order (`0001` → `0013`) and run it, then run `supabase/seed.sql`.
 
    **B. Supabase CLI (recommended, repeatable):**
    ```bash
@@ -95,6 +106,7 @@ Find all three values in the Supabase dashboard under
 | `0010_reports_files.sql` | DXF + GML file types, structured approval columns (DLS reference, basin, plot, survey method, notes), and the PRIVATE `reports` storage bucket |
 | `0011_service_requests.sql` | Counter e-services: `service_requests` (electronic plate · unarchived change statement, keyed on the DLS key) and the append-only `service_request_events` history, RLS on with no anon policy |
 | `0012_permanent_records.sql` | Service requests and reviewed submissions are **permanent records**. `service_request_events` and `report_reviews` each had `ON DELETE CASCADE` *and* an append-only delete rule — a contradiction that made the parent undeletable behind an opaque 500. Both FKs become `ON DELETE RESTRICT`, both append-only rules stay, and `search_path` is pinned on the six helper functions that lacked it |
+| `0013_cms_content.sql` | Closes two gaps that kept the CMS off the public site: `posts.featured_image_url` (the uuid FK cannot hold a repository path) and the `badge_text` / `secondary_cta_label` / `view_all_label` columns the hero block actually uses, plus indexes for the homepage and news read paths |
 | `seed.sql` | roles, 12 governorates, categories, demo user/member, demo orders/submissions/approval — mirrors the in-memory demo |
 
 ### Storage

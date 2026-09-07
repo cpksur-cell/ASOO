@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { ArrowDown, ArrowUp, CheckCircle2, Eye, EyeOff, Pencil, X } from 'lucide-react'
 
 import { cn } from '@/lib/cn'
+import type { Locale } from '@/i18n/client'
 import { Card, StatusBadge } from '@/components/ui/primitives'
 import type { StoredBlock } from '@/lib/data/store'
 import {
@@ -40,9 +41,11 @@ export interface ComposerLabels {
 export function HomepageComposer({
   labels,
   initialBlocks,
+  locale,
 }: {
   labels: ComposerLabels
   initialBlocks: StoredBlock[]
+  locale: Locale
 }) {
   const [blocks, setBlocks] = useState(initialBlocks)
   const [editing, setEditing] = useState<StoredBlock | null>(null)
@@ -63,7 +66,7 @@ export function HomepageComposer({
 
   function move(block: StoredBlock, direction: 'up' | 'down') {
     startTransition(async () => {
-      const result = await reorderBlockAction({ id: block.id, direction })
+      const result = await reorderBlockAction({ id: block.id, direction, locale })
       if (!result.ok) return report(result)
       setBlocks((prev) => {
         const next = [...prev]
@@ -80,7 +83,7 @@ export function HomepageComposer({
   function toggle(block: StoredBlock) {
     startTransition(async () => {
       const isPublished = !block.isPublished
-      const result = await setBlockPublishedAction({ id: block.id, isPublished })
+      const result = await setBlockPublishedAction({ id: block.id, isPublished, locale })
       if (!result.ok) return report(result)
       setBlocks((prev) =>
         prev.map((b) => (b.id === block.id ? { ...b, isPublished } : b)),
@@ -91,7 +94,7 @@ export function HomepageComposer({
 
   function saveText(block: StoredBlock, text: Record<string, unknown>) {
     startTransition(async () => {
-      const result = await updateBlockTextAction({ id: block.id, text })
+      const result = await updateBlockTextAction({ id: block.id, text, locale })
       if (!result.ok) return report(result)
       setBlocks((prev) =>
         prev.map((b) => (b.id === block.id ? { ...b, text: { ...b.text, ...text } } : b)),

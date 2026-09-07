@@ -90,28 +90,52 @@ const reorderSchema = z.object({
   locale: z.string().optional(),
 })
 
-export async function reorderBlockAction(input: unknown): Promise<ActionResult<void>> {
+/**
+ * Move a block one place within its region.
+ *
+ * Returns the block ids IN THEIR NEW ORDER, and the client renders that rather
+ * than swapping two entries of its own list. The distinction is not cosmetic:
+ * the composer lists every region in one column, so the row visually above a
+ * block is frequently in a different region and not its neighbour at all.
+ * Swapping locally showed an `aside` block trading places with a `main` one
+ * while the database — correctly — did nothing, and the lie survived until the
+ * next full page load.
+ *
+ * A move with nowhere to go is a legal outcome, not an error: it returns the
+ * unchanged order, and the screen stays put because the server said so.
+ */
+export async function reorderBlockAction(input: unknown): Promise<ActionResult<string[]>> {
   const parsed = reorderSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'INVALID' }
   const { id, direction } = parsed.data
+  const locale = localeOf(parsed.data.locale)
 
   return guard('layout', 'manage', async () => {
     if (live()) {
-      const ops = await cms.buildReorderOps(id, direction)
-      if (ops.length === 0) return
+      // No early return for "already at the edge" any more. Working that out
+      // here would mean reading the order over a separate request and deciding
+      // against a snapshot that may already be stale — the race migration 0015
+      // closes. The database decides, under a lock, and a move with nowhere to
+      // go simply changes nothing.
       await withAtomicAudit(
         { action: 'layout.reorder', entityType: 'layout_block', entityId: id },
-        ops,
+        cms.buildReorderOps(id, direction),
       )
-    } else {
-      const before = listStoredBlocks().map((b) => ({ id: b.id, position: b.position }))
-      await withAudit(
-        { action: 'layout.reorder', entityType: 'layout_block', entityId: id, before },
-        async () =>
-          reorderStoredBlock(id, direction).map((b) => ({ id: b.id, position: b.position })),
-      )
+      revalidatePublic([''])
+      // Read back rather than predict. This is display state, so it sits
+      // outside the transaction deliberately — if another editor moves
+      // something between the write and this read, the screen shows their
+      // result, which is the true current order and the right thing to show.
+      return (await cms.listBlocks(locale)).map((b) => b.id)
     }
+
+    const before = listStoredBlocks().map((b) => ({ id: b.id, position: b.position }))
+    const order = await withAudit(
+      { action: 'layout.reorder', entityType: 'layout_block', entityId: id, before },
+      async () => reorderStoredBlock(id, direction).map((b) => b.id),
+    )
     revalidatePublic([''])
+    return order
   })
 }
 

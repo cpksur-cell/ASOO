@@ -68,13 +68,17 @@ export function HomepageComposer({
     startTransition(async () => {
       const result = await reorderBlockAction({ id: block.id, direction, locale })
       if (!result.ok) return report(result)
+      // Render the order the SERVER reports, not a local swap of the two
+      // adjacent rows. Every region is listed in one column here, so the row
+      // above a block is often in a different region and not a legal neighbour
+      // — swapping locally showed moves the database had correctly refused.
       setBlocks((prev) => {
-        const next = [...prev]
-        const i = next.findIndex((b) => b.id === block.id)
-        const j = direction === 'up' ? i - 1 : i + 1
-        if (i === -1 || j < 0 || j >= next.length) return prev
-        ;[next[i], next[j]] = [next[j]!, next[i]!]
-        return next
+        const byId = new Map(prev.map((b) => [b.id, b]))
+        const next = result.data.map((id) => byId.get(id)).filter((b) => b !== undefined)
+        // If the sets have diverged — a block added or removed by someone else
+        // since this page loaded — keep what is on screen rather than silently
+        // dropping a block from it. The next load reconciles.
+        return next.length === prev.length ? next : prev
       })
       setNotice({ tone: 'ok', text: labels.saved })
     })

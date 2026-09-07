@@ -35,15 +35,27 @@ import { AuditError, type AuditContext } from './index'
  *     them, and does not need a second round trip to read them.
  */
 
-/** One write. `match` selects rows; `values` are the columns to set. */
+/**
+ * One write. `match` selects rows; `values` are the columns to set.
+ *
+ * `reorder_block` is the odd one out and deliberately so. The other kinds say
+ * WHICH ROWS to change, which means the caller had to read them first — over a
+ * separate request, outside the transaction, so the answer could already be
+ * stale (see migration 0015). It instead says what to DO — move this block one
+ * place — and lets the database pick the neighbour under a lock. Any future op
+ * whose target depends on the current state of other rows belongs in the same
+ * shape.
+ */
 export interface AuditedOp {
-  kind: 'insert' | 'update' | 'upsert' | 'delete'
+  kind: 'insert' | 'update' | 'upsert' | 'delete' | 'reorder_block'
   /** Must be on the allowlist inside `audited_write`; `audit_logs` is not. */
   table: string
-  /** Required for update/upsert/delete. Columns are checked against the catalog. */
+  /** Required for update/upsert/delete/reorder_block. Columns are checked against the catalog. */
   match?: Record<string, unknown>
   /** Required for insert/update/upsert. */
   values?: Record<string, unknown>
+  /** `reorder_block` only. */
+  direction?: 'up' | 'down'
 }
 
 export interface AuditedResult<T = Record<string, unknown>> {

@@ -113,6 +113,11 @@ export async function listBlocks(locale: Locale): Promise<StoredBlock[]> {
     // Unlike the public read, the admin sees unpublished blocks too — that is
     // what the publish toggle is for.
     .order('position', { ascending: true })
+    // `position` has no unique constraint, so ties are possible. Breaking them
+    // by id matches how `audited_reorder_block` picks a neighbour: without it,
+    // two tied blocks could be listed in one order and reordered against
+    // another, and moving one up then down would not return it to where it was.
+    .order('id', { ascending: true })
   if (error) throw error
 
   return (data as unknown as AdminBlockRow[]).map((r) => toStoredBlock(r, locale))
@@ -158,118 +163,26 @@ export function buildRemoveBlockOps(id: string): AuditedOp[] {
 }
 
 /**
- * Swap a block with its neighbour.
+ * Move a block one place within its region.
  *
- * Positions are swapped rather than renumbered so a reorder touches two rows
- * instead of the whole layout — and so a concurrent edit to a third block
- * cannot be clobbered by a wholesale rewrite.
- */
-/**
- * Describe a reorder as operations: read the current order, then emit the
- * three position writes that swap two blocks.
+ * This deliberately reads NOTHING. An earlier version fetched the current
+ * order, worked out which two rows to swap, and emitted the position writes —
+ * but that read went over its own request, outside the transaction that then
+ * acted on it, so two editors reordering the same layout at the same moment
+ * could each compute a swap against a layout the other had already changed.
+ * The outcome was not "one of them won" but an order neither asked for, with
+ * two blocks sharing a position. Migration 0015 has the worked example.
  *
- * The read happens outside the transaction, which is a real if narrow race —
- * two editors reordering the same layout in the same second could interleave.
- * The swap itself is now atomic and audited, which is the part that matters;
- * closing the read race needs `select ... for update`, and that needs this to
- * become a bespoke function rather than a list of ops.
+ * So the decision moves to where it can be made safely: `reorder_block` names
+ * the block and the direction, and `audited_reorder_block` picks the neighbour
+ * having locked the parent layout row.
+ *
+ * The consequence worth knowing is that the caller can no longer tell in
+ * advance whether the move is a no-op — a block already at the edge of its
+ * region. It has to ask, and the database answers by changing nothing.
  */
-export async function buildReorderOps(
-  id: string,
-  direction: 'up' | 'down',
-): Promise<AuditedOp[]> {
-  const supabase = getServiceClient()
-  const layout = await layoutId()
-  if (!layout) return []
-
-  const { data, error } = await supabase
-    .from('layout_blocks')
-    .select('id, position, region')
-    .eq('layout_id', layout)
-    .order('position', { ascending: true })
-  if (error) throw error
-
-  const rows = (data ?? []) as Array<{ id: string; position: number; region: string }>
-  const current = rows.find((r) => r.id === id)
-  if (!current) return []
-
-  // Only reorder within the same region — moving a `main` block above an
-  // `aside` one would be meaningless.
-  const siblings = rows.filter((r) => r.region === current.region)
-  const index = siblings.findIndex((r) => r.id === id)
-  const target = direction === 'up' ? siblings[index - 1] : siblings[index + 1]
-  if (!target) return []
-
-  // A two-step swap through a scratch value: `position` is not unique, but
-  // going straight to the target's number would briefly duplicate it, which
-  // makes the ordering ambiguous to any read landing in between.
-  const scratch = -Math.abs(current.position) - 1
-  return [
-    { kind: 'update', table: 'layout_blocks', match: { id: current.id }, values: { position: scratch } },
-    { kind: 'update', table: 'layout_blocks', match: { id: target.id }, values: { position: current.position } },
-    { kind: 'update', table: 'layout_blocks', match: { id: current.id }, values: { position: target.position } },
-  ]
-}
-
-export async function reorderBlock(
-  id: string,
-  direction: 'up' | 'down',
-): Promise<Array<{ id: string; position: number }>> {
-  const supabase = getServiceClient()
-  const layout = await layoutId()
-  if (!layout) return []
-
-  const { data, error } = await supabase
-    .from('layout_blocks')
-    .select('id, position, region')
-    .eq('layout_id', layout)
-    .order('position', { ascending: true })
-  if (error) throw error
-
-  const rows = (data ?? []) as Array<{ id: string; position: number; region: string }>
-  const index = rows.findIndex((r) => r.id === id)
-  if (index === -1) return rows.map(({ id: rid, position }) => ({ id: rid, position }))
-
-  const current = rows[index]!
-  // Only reorder within the same region — moving a `main` block above an
-  // `aside` one would be meaningless.
-  const siblings = rows.filter((r) => r.region === current.region)
-  const sIndex = siblings.findIndex((r) => r.id === id)
-  const target = direction === 'up' ? siblings[sIndex - 1] : siblings[sIndex + 1]
-  if (!target) return rows.map(({ id: rid, position }) => ({ id: rid, position }))
-
-  // A two-step swap through a scratch value: `position` is not unique, but
-  // going straight to the target's number would briefly duplicate it, which
-  // makes the ordering ambiguous to any read landing in between.
-  const scratch = -Math.abs(current.position) - 1
-  for (const [blockId, position] of [
-    [current.id, scratch],
-    [target.id, current.position],
-    [current.id, target.position],
-  ] as Array<[string, number]>) {
-    const { error: updateError } = await supabase
-      .from('layout_blocks')
-      .update({ position })
-      .eq('id', blockId)
-    if (updateError) throw updateError
-  }
-
-  return rows
-    .map((r) =>
-      r.id === current.id
-        ? { id: r.id, position: target.position }
-        : r.id === target.id
-          ? { id: r.id, position: current.position }
-          : { id: r.id, position: r.position },
-    )
-    .sort((a, b) => a.position - b.position)
-}
-
-export async function removeBlock(id: string): Promise<void> {
-  // The translations go with it via ON DELETE CASCADE. A layout block is
-  // configuration, not a record of an act — unlike a post, which is archived.
-  const { error } = await getServiceClient().from('layout_blocks').delete().eq('id', id)
-  if (error) throw error
+export function buildReorderOps(id: string, direction: 'up' | 'down'): AuditedOp[] {
+  return [{ kind: 'reorder_block', table: 'layout_blocks', match: { id }, direction }]
 }
 
 /* ----------------------------------------------------------------- posts */
@@ -344,70 +257,10 @@ export async function getPost(id: string, locale: Locale): Promise<AdminPost | n
   return data ? toAdminPost(data as unknown as AdminPostRow, locale) : null
 }
 
-export async function upsertPost(
-  post: {
-    id: string
-    slug: string
-    title: string
-    category: string
-    publishedAt: string
-    status: 'draft' | 'published' | 'scheduled'
-    featuredImage: string
-    excerpt: string
-  },
-  locale: Locale,
-): Promise<void> {
-  const supabase = getServiceClient()
-
-  const { data: category, error: catError } = await supabase
-    .from('post_categories')
-    .select('id')
-    .eq('slug', post.category)
-    .maybeSingle()
-  if (catError) throw catError
-
-  const row = {
-    slug: post.slug,
-    category_id: category?.id ?? null,
-    status: post.status,
-    published_at: new Date(`${post.publishedAt}T00:00:00Z`).toISOString(),
-    featured_image_url: post.featuredImage || null,
-  }
-
-  // The composer sends a client-side id for a new post. Treat an id that does
-  // not resolve to a row as "create", so a stale tab cannot 404 an editor's
-  // work — and match on the id we hold, never on one supplied blind.
-  const existing = await getPost(post.id, locale).catch(() => null)
-
-  let postId = existing?.id
-  if (existing) {
-    const { error } = await supabase.from('posts').update(row).eq('id', existing.id)
-    if (error) throw error
-  } else {
-    const { data, error } = await supabase.from('posts').insert(row).select('id').single()
-    if (error) throw error
-    postId = data.id as string
-  }
-
-  const { error: translationError } = await supabase.from('post_translations').upsert(
-    { post_id: postId, locale, title: post.title, excerpt: post.excerpt || null },
-    { onConflict: 'post_id,locale' },
-  )
-  if (translationError) throw translationError
-}
-
 /**
  * Archive, never delete. A destroyed announcement cannot be recovered, and the
  * syndicate's record of what it published is part of its governance.
  */
-export async function archivePost(id: string): Promise<void> {
-  const { error } = await getServiceClient()
-    .from('posts')
-    .update({ status: 'archived' })
-    .eq('id', id)
-  if (error) throw error
-}
-
 export function buildArchivePostOps(id: string): AuditedOp[] {
   return [{ kind: 'update', table: 'posts', match: { id }, values: { status: 'archived' } }]
 }

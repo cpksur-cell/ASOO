@@ -72,7 +72,7 @@ Find all three values in the Supabase dashboard under
 2. **Apply the schema.** Two options:
 
    **A. Supabase SQL Editor (no tooling):** open each file in `supabase/migrations/`
-   in ascending order (`0001` → `0014`) and run it, then run `supabase/seed.sql`.
+   in ascending order (`0001` → `0015`) and run it, then run `supabase/seed.sql`.
 
    **B. Supabase CLI (recommended, repeatable):**
    ```bash
@@ -108,6 +108,7 @@ Find all three values in the Supabase dashboard under
 | `0012_permanent_records.sql` | Service requests and reviewed submissions are **permanent records**. `service_request_events` and `report_reviews` each had `ON DELETE CASCADE` *and* an append-only delete rule — a contradiction that made the parent undeletable behind an opaque 500. Both FKs become `ON DELETE RESTRICT`, both append-only rules stay, and `search_path` is pinned on the six helper functions that lacked it |
 | `0013_cms_content.sql` | Closes two gaps that kept the CMS off the public site: `posts.featured_image_url` (the uuid FK cannot hold a repository path) and the `badge_text` / `secondary_cta_label` / `view_all_label` columns the hero block actually uses, plus indexes for the homepage and news read paths |
 | `0014_atomic_audit.sql` | `audited_write(p_audit, p_ops)` — applies an ordered list of writes AND the audit row in one transaction, closing the gap where a mutation could commit and its record fail. Tables are allowlisted, every column is checked against the catalog, and values are bound through `jsonb_populate_record` rather than interpolated |
+| `0015_reorder_block.sql` | `audited_reorder_block()` plus a `reorder_block` op kind on `audited_write`. A reorder used to be decided in application memory from a read taken outside the transaction; now the caller says only "move this block up" and the database picks the neighbour under a `for update` lock on the parent `layouts` row, so two editors reordering the same layout cannot interleave |
 | `seed.sql` | roles, 12 governorates, categories, demo user/member, demo orders/submissions/approval — mirrors the in-memory demo |
 
 ### Storage
@@ -193,6 +194,13 @@ membership.
   recorded" is no longer a reachable state. `audit_logs` is deliberately absent
   from that function's table allowlist — the trail cannot be written through
   the same door it protects.
+- **A decision that depends on other rows is made inside the transaction.**
+  Atomicity of the *write* is not enough on its own: a mutation chosen from a
+  read taken over a separate request acts on a snapshot that may already be
+  stale. The layout reorder was the one case of this and is now a named
+  operation that picks its target under a lock (0015). Any future op whose
+  target depends on the current state of other rows belongs in the same shape,
+  not in a `match` computed by the application.
 - **Append-only enforced in the database.** `audit_logs` and `report_reviews`
   carry `ON UPDATE/DELETE DO INSTEAD NOTHING` rules, so history cannot be rewritten
   even by a bug in application code.

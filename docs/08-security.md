@@ -117,6 +117,13 @@ Notable deliberate choices:
 - `certificates:issue` sits with membership, not finance — issuing a good-standing certificate is a membership judgment.
 - Only `super_admin` reads the audit log. An officer who can read the audit log can see what they need to avoid.
 - `invoices:waive` is finance-only and always requires a reason.
+- **Suspension is enforced by the change, not by the endpoint.** Any path that
+  sets `members.status` to `suspended` — the single edit or a 500-row bulk —
+  requires `members:suspend` and a stated reason, checked in the action against
+  the member's *previous* status. It used to be enforced by a dedicated action
+  that nothing called, while the screen staff actually use edited `status` like
+  any other column through `member:update`, which asks for nothing. Reactivation
+  is recorded distinctly as `member.reactivate`.
 - `members:export` is restricted and separately audited — bulk export is the highest-value target in the system.
 - `requests:*` covers the two counter e-services (electronic plate · unarchived change statement). Staff **read the whole queue** because they work it; a member's `own` is enforced by deriving the list from `auth.uid`, not from anything the URL carries. `requests:submit` is deliberately absent from every staff role — an officer requesting on a member's behalf would put a citizen's land data in the wrong dashboard.
 - `requests:fulfill` also covers declining, and a decline requires a reason (`servicerequest.reject` is in the audit wrapper's REASON_REQUIRED list). The member is shown that reason.

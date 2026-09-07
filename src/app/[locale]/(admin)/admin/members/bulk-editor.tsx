@@ -30,6 +30,9 @@ export interface EditorLabels {
   colLicense: string
   colGov: string
   colStatus: string
+  suspendReason: string
+  suspendReasonHint: string
+  reasonRequired: string
   colActions: string
   edit: string
   editMember: string
@@ -308,7 +311,9 @@ export function BulkEditor({
                   text:
                     result.error === 'UNAUTHORIZED' || result.error === 'UNAUTHENTICATED'
                       ? labels.noPermission
-                      : labels.saveFailed,
+                      : result.error === 'REASON_REQUIRED'
+                        ? labels.reasonRequired
+                        : labels.saveFailed,
                 })
                 return
               }
@@ -341,7 +346,9 @@ export function BulkEditor({
                       ? labels.bulkNothing
                       : result.error === 'UNAUTHORIZED' || result.error === 'UNAUTHENTICATED'
                         ? labels.noPermission
-                        : labels.saveFailed,
+                        : result.error === 'REASON_REQUIRED'
+                          ? labels.reasonRequired
+                          : labels.saveFailed,
                 })
                 return
               }
@@ -400,6 +407,10 @@ function EditDialog({
   const [categoryCode, setCategoryCode] = useState(member.categoryCode ?? '')
   const [status, setStatus] = useState(member.status)
   const [visible, setVisible] = useState(member.isDirectoryVisible)
+  // Only meaningful when this edit suspends. The server refuses a suspension
+  // without it regardless of what this form does — see bulk-actions.ts.
+  const [reason, setReason] = useState('')
+  const suspending = status === 'suspended' && member.status !== 'suspended'
 
   return (
     <Modal
@@ -424,6 +435,7 @@ function EditDialog({
             categoryCode,
             status,
             isDirectoryVisible: visible,
+            reason: suspending ? reason : undefined,
           })
         }}
       >
@@ -509,6 +521,35 @@ function EditDialog({
           </Field>
         </div>
 
+        {/*
+          Suspension removes the member from the public directory immediately,
+          so it is the one status change that has to say why. The field appears
+          only when the change is actually a suspension — asking for a reason
+          to correct a governorate would train staff to type nothing.
+        */}
+        {suspending && (
+          <div className="rounded-lg border border-status-warning-border bg-status-warning-bg p-3">
+            <label
+              htmlFor="suspend-reason"
+              className="block text-[length:var(--type-xs)] font-semibold text-status-warning-fg"
+            >
+              {labels.suspendReason}
+            </label>
+            <textarea
+              id="suspend-reason"
+              rows={2}
+              required
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              aria-describedby="suspend-reason-hint"
+              className="mt-1.5 w-full rounded-lg border border-border-default bg-surface-default px-3 py-2 text-[length:var(--type-sm)] text-text-primary"
+            />
+            <p id="suspend-reason-hint" className="mt-1 text-[length:var(--type-xs)] text-text-secondary">
+              {labels.suspendReasonHint}
+            </p>
+          </div>
+        )}
+
         <label className="flex items-center gap-2.5 rounded-lg border border-border-subtle p-3">
           <input
             type="checkbox"
@@ -531,7 +572,7 @@ function EditDialog({
           </button>
           <button
             type="submit"
-            disabled={pending}
+            disabled={pending || (suspending && !reason.trim())}
             aria-busy={pending}
             className="min-h-11 rounded-lg bg-surface-brand px-5 text-[length:var(--type-sm)] font-semibold text-text-on-brand hover:bg-primary-600 disabled:opacity-50"
           >
@@ -568,6 +609,10 @@ function BulkDialog({
   const [categoryCode, setCategoryCode] = useState('')
   const [status, setStatus] = useState('')
   const [visibility, setVisibility] = useState('')
+  const [reason, setReason] = useState('')
+  // A batch suspension can remove up to 500 people from the public register
+  // in one action. It states why, or it does not happen.
+  const suspending = status === 'suspended'
 
   return (
     <Modal
@@ -588,6 +633,7 @@ function BulkDialog({
           if (categoryCode) patch.categoryCode = categoryCode
           if (status) patch.status = status
           if (visibility) patch.isDirectoryVisible = visibility === 'show'
+          if (suspending) patch.reason = reason
           onApply(patch)
         }}
       >
@@ -595,6 +641,29 @@ function BulkDialog({
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
           {labels.bulkWarning}
         </p>
+
+        {suspending && (
+          <div className="rounded-lg border border-status-overdue-border bg-status-overdue-bg p-3">
+            <label
+              htmlFor="bulk-suspend-reason"
+              className="block text-[length:var(--type-xs)] font-semibold text-status-overdue-fg"
+            >
+              {labels.suspendReason}
+            </label>
+            <textarea
+              id="bulk-suspend-reason"
+              rows={2}
+              required
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              aria-describedby="bulk-suspend-reason-hint"
+              className="mt-1.5 w-full rounded-lg border border-border-default bg-surface-default px-3 py-2 text-[length:var(--type-sm)] text-text-primary"
+            />
+            <p id="bulk-suspend-reason-hint" className="mt-1 text-[length:var(--type-xs)] text-text-secondary">
+              {labels.suspendReasonHint}
+            </p>
+          </div>
+        )}
 
         <Field label={labels.memberGov}>
           <select
@@ -663,7 +732,7 @@ function BulkDialog({
           </button>
           <button
             type="submit"
-            disabled={pending}
+            disabled={pending || (suspending && !reason.trim())}
             aria-busy={pending}
             className="min-h-11 rounded-lg bg-surface-brand px-5 text-[length:var(--type-sm)] font-semibold text-text-on-brand hover:bg-primary-600 disabled:opacity-50"
           >

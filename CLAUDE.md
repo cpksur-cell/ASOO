@@ -212,9 +212,25 @@ the browser are the whole safety net, which is worth knowing before trusting a
 change you have not exercised by hand.
 
 Migrations are applied through the Supabase MCP or by pasting the file from
-`supabase/migrations/` into the SQL editor. `0001`–`0011` were applied by
-pasting, so Supabase has no migration history for them — reconcile that before
-relying on `supabase db push`.
+`supabase/migrations/` into the SQL editor.
+
+`supabase_migrations.schema_migrations` now holds one row per file, versioned
+by the filename's numeric prefix (`0001` … `0015`). `0001`–`0011` had been
+pasted into the SQL editor and `0012`–`0015` applied through the MCP under
+generated timestamps, so the ledger matched neither the repository nor itself;
+it was rewritten to match after each migration's objects were verified present
+in the database. The pre-rewrite rows are kept in
+`supabase_migrations.schema_migrations_backup_20260907`.
+
+Two things follow. **Keep the prefixes sequential** — a new migration is
+`0016_*.sql`, not a CLI-generated timestamp, or the ordering breaks. And the
+ledger records that a migration ran, never what it contained: the file in
+`supabase/migrations/` is the only description of that, so an applied file is
+never edited.
+
+The CLI is still not linked (no `supabase/config.toml`, no project ref), so
+`supabase db push` needs `supabase link` first — which wants an access token
+and the database password.
 
 ---
 

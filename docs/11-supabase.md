@@ -92,6 +92,32 @@ Find all three values in the Supabase dashboard under
 
 ## 4. Migration file map
 
+`supabase_migrations.schema_migrations` holds one row per file below, versioned
+by the filename's numeric prefix. That was not always so: `0001`–`0011` were
+pasted into the SQL editor and left no history at all, while `0012`–`0015` went
+through the MCP and were recorded under generated timestamps (`0015` as two
+rows, because it was applied as two calls). The ledger therefore agreed with
+neither the repository nor itself, and `supabase db push` would have re-run
+eleven migrations against a database that already had them.
+
+It was rewritten to match this table, but only after checking the claim it
+makes: every table, type, function, rule, policy, index and column each
+migration creates was confirmed present, along with the changes that are
+*removals* and cannot be proved by existence — `members.license_number` made
+nullable (0007), the `audit_logs` actor foreign key dropped (0009), and both
+`ON DELETE RESTRICT` foreign keys (0012). Marking a migration applied is an
+assertion about the database; it was worth verifying rather than assuming.
+
+The five pre-rewrite rows are kept in
+`supabase_migrations.schema_migrations_backup_20260907`.
+
+**Consequences worth knowing.** New migrations continue the sequence —
+`0016_*.sql` — because a CLI-generated timestamp would sort after these but
+read as unrelated. And the ledger records only THAT a migration ran, never what
+it contained; the file here is the sole description, which is why an applied
+file is never edited. The CLI is not linked yet (no `supabase/config.toml`), so
+`db push` still needs `supabase link` and the database password.
+
 | File | Contents |
 |---|---|
 | `0001_init.sql` | extensions (citext, pgcrypto, pg_trgm), enums, sequences, `set_updated_at`, `next_order_number`, `next_approval_number`, `generate_verification_code` |

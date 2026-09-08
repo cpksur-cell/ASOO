@@ -34,6 +34,15 @@ export default async function AdminLayout({
   }
 
   /*
+   * An account still on its provisioned password may go nowhere but the screen
+   * that replaces it. The real refusal is in `assertPermission` — a redirect is
+   * navigation, not a boundary — but sending the member somewhere useful beats
+   * showing them a shell where every action fails.
+   */
+  if (session.mustChangePassword) redirect(href(typed, 'change-password'))
+
+
+  /*
    * A nav item appears only if its role actually holds the permission behind
    * it. docs/04-site-architecture.md §5.4: "A content editor never sees a
    * finance menu item they cannot use."

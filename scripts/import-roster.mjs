@@ -43,35 +43,9 @@ import nextEnv from '@next/env'
 
 import { normalizeArabic, transliterateName } from './lib/translit.mjs'
 import { readZip, readSheetRows } from './lib/xlsx.mjs'
-
-/* ----------------------------------------------------------------- mobile */
-
-/**
- * Reduce whatever the spreadsheet holds to +9627XXXXXXXX, or null.
- *
- * Jordanian mobiles are 07 followed by 7, 8 or 9 and seven more digits. The
- * spreadsheet has dropped the leading zero from most of them, and Excel has
- * turned at least two into something shorter still. Returning null for
- * anything that does not fit is the point: a mis-parsed phone number becomes
- * a login nobody can use, or worse, someone else's.
- */
-export function normalizeJordanMobile(raw) {
-  if (!raw) return null
-  const digits = String(raw)
-    // Arabic-Indic and extended digits fold to Western, same rule as DLS keys.
-    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
-    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
-    .replace(/\D/g, '')
-
-  let local = digits
-  if (local.startsWith('00962')) local = local.slice(5)
-  else if (local.startsWith('962')) local = local.slice(3)
-  if (local.startsWith('0')) local = local.slice(1)
-
-  // Now expect 7XXXXXXXX — nine digits starting 77, 78 or 79.
-  if (!/^7[789]\d{7}$/.test(local)) return null
-  return `+962${local}`
-}
+// One rule for what a usable mobile is, shared with the login form and the
+// provisioning script — see the note in that file.
+import { normalizeJordanMobile } from '../src/lib/member-login.ts'
 
 /* ------------------------------------------------------------------- read */
 

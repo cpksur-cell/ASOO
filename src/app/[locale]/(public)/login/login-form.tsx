@@ -8,6 +8,9 @@ import { useAuth } from '@/lib/auth/client'
 import type { Locale } from '@/i18n/client'
 import { GoogleSignIn } from '@/components/features/google-sign-in'
 import { createClient, isAuthConfigured } from '@/lib/supabase/browser'
+// The mobile number a member types becomes the internal address Supabase
+// authenticates. One rule, shared with the importer and the provisioner.
+import { memberLoginEmail } from '@/lib/member-login'
 import { Card } from '@/components/ui/primitives'
 import { cn } from '@/lib/cn'
 
@@ -33,6 +36,8 @@ export interface LoginLabels {
   failed: string
   devNotice: string
   devOtpHint: string
+  mobileInvalid: string
+  passwordRequired: string
   passwordLabel: string
   passwordPlaceholder: string
   signIn: string
@@ -69,7 +74,9 @@ export function LoginForm({
   const [contact, setContact] = useState('')
   const [otpSent, setOtpSent] = useState(false)
   const [otp, setOtp] = useState('')
-  const [error, setError] = useState<'otp_invalid' | 'failed' | null>(null)
+  const [error, setError] = useState<
+    'otp_invalid' | 'failed' | 'mobile_invalid' | 'password_required' | null
+  >(null)
   const [busy, setBusy] = useState(false)
 
   /*
@@ -91,6 +98,20 @@ export function LoginForm({
     router.refresh()
   }
 
+
+  /**
+   * The address to authenticate with.
+   *
+   * On the mobile tab the member types their number and Supabase is handed the
+   * internal address derived from it — see src/lib/member-login.ts. Returns
+   * null when the number is not a usable Jordanian mobile, which is a
+   * different failure from a wrong password and is reported as such.
+   */
+  function identity(): string | null {
+    if (method === 'phone') return memberLoginEmail(contact)
+    return contact.trim().toLowerCase()
+  }
+
   /**
    * Step one. With a password, this signs in outright; without one it asks
    * Supabase to email a one-time code and moves to the verify step.
@@ -100,7 +121,23 @@ export function LoginForm({
     setBusy(true)
     setError(null)
 
-    const email = contact.trim().toLowerCase()
+    const email = identity()
+    if (!email) {
+      setError('mobile_invalid')
+      setBusy(false)
+      return
+    }
+
+    /*
+     * A member's internal address has no mailbox, on purpose, so a one-time
+     * code would be sent into a void. On the mobile tab a password is the only
+     * way in.
+     */
+    if (method === 'phone' && !otp) {
+      setError('password_required')
+      setBusy(false)
+      return
+    }
 
     try {
       if (!authReady) {
@@ -150,7 +187,12 @@ export function LoginForm({
     setBusy(true)
     setError(null)
 
-    const email = contact.trim().toLowerCase()
+    const email = identity()
+    if (!email) {
+      setError('mobile_invalid')
+      setBusy(false)
+      return
+    }
 
     try {
       if (!authReady) {
@@ -276,7 +318,15 @@ export function LoginForm({
           className="mt-5 flex items-start gap-2.5 rounded-lg border border-status-overdue-border bg-status-overdue-bg p-3 text-[length:var(--type-xs)] text-status-overdue-fg"
         >
           <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-          <span>{error === 'otp_invalid' ? labels.otpInvalid : labels.failed}</span>
+          <span>
+            {error === 'otp_invalid'
+              ? labels.otpInvalid
+              : error === 'mobile_invalid'
+                ? labels.mobileInvalid
+                : error === 'password_required'
+                  ? labels.passwordRequired
+                  : labels.failed}
+          </span>
         </div>
       )}
 

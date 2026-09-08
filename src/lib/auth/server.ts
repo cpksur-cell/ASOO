@@ -17,6 +17,14 @@ export interface UserSession {
   displayName: string
   role: Role
   preferredLocale: Locale
+  /**
+   * True while the account still holds the password it was provisioned with.
+   *
+   * Members are created in bulk with one shared initial password, so until it
+   * is replaced the account is not really theirs — anyone who knows the
+   * pattern holds it too. Everything except changing it is refused.
+   */
+  mustChangePassword: boolean
 }
 
 /**
@@ -48,6 +56,8 @@ export async function getUserSession(): Promise<UserSession | null> {
           .join(' '),
         role: mockRole,
         preferredLocale: 'ar',
+        // A mock session was never provisioned, so there is nothing to change.
+        mustChangePassword: false,
       }
     }
   }
@@ -77,6 +87,7 @@ export async function getUserSession(): Promise<UserSession | null> {
       user.email?.split('@')[0] ??
       user.id,
     role: await resolveRole(user.id),
+    mustChangePassword: await passwordChangePending(user.id),
     preferredLocale:
       (user.user_metadata?.preferred_locale as Locale | undefined) ?? 'ar',
   }
@@ -128,6 +139,30 @@ async function resolveRole(userId: string): Promise<Role> {
   }
   return codes.find(isRole) ?? 'member'
 }
+
+/**
+ * Is this account still on its provisioned password?
+ *
+ * Read from `users`, not from a claim or a cookie, for the same reason the
+ * role is: the client must not be able to assert that it has already changed
+ * its password.
+ *
+ * Defaults to FALSE when the row or the lookup is missing. That is deliberate
+ * and is the safe direction here: this flag GATES a member out of the site, so
+ * failing closed would lock every member out of a working system on a
+ * transient database error. The password itself is still checked by Supabase
+ * Auth — this only decides whether we insist on replacing it.
+ */
+const passwordChangePending = cache(async (userId: string): Promise<boolean> => {
+  if (!isSupabaseConfigured()) return false
+  const { data, error } = await getServiceClient()
+    .from('users')
+    .select('must_change_password')
+    .eq('id', userId)
+    .maybeSingle()
+  if (error || !data) return false
+  return Boolean((data as { must_change_password?: boolean }).must_change_password)
+})
 
 /** True when the session holds the given role. `super_admin` holds all of them. */
 export async function hasRole(role: Role): Promise<boolean> {
@@ -213,6 +248,7 @@ function isGranted(granted: ReadonlySet<string>, resource: string, action: strin
 export async function can(resource: string, action: string): Promise<boolean> {
   const session = await getUserSession()
   if (!session) return false
+  if (session.mustChangePassword) return false
   return isGranted(await grantsForRole(session.role), resource, action)
 }
 
@@ -237,6 +273,18 @@ export class AuthError extends Error {
 export async function assertPermission(resource: string, action: string): Promise<UserSession> {
   const session = await getUserSession()
   if (!session) throw new AuthError('UNAUTHENTICATED')
+
+  /*
+   * An account still holding its provisioned password may do nothing but
+   * replace it. This is the real gate: the layouts also redirect, but a server
+   * action is a public HTTP endpoint and a redirect is not a boundary.
+   *
+   * Reported as UNAUTHORIZED rather than a new error code. It is accurate —
+   * the member is not yet permitted to act — and every existing action already
+   * surfaces it sensibly. The change-password action deliberately does not
+   * call this; it reads the session directly.
+   */
+  if (session.mustChangePassword) throw new AuthError('UNAUTHORIZED')
 
   if (!isGranted(await grantsForRole(session.role), resource, action)) {
     throw new AuthError('UNAUTHORIZED')

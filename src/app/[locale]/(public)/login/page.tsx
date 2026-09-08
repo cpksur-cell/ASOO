@@ -56,6 +56,8 @@ export default async function LoginPage({
     methodPhone: t('auth.methodPhone'),
     emailLabel: t('auth.emailLabel'),
     phoneLabel: t('auth.phoneLabel'),
+    mobileInvalid: t('auth.mobileInvalid'),
+    passwordRequired: t('auth.passwordRequired'),
     phoneHint: t('auth.phoneHint'),
     otpLabel: t('auth.otpLabel'),
     otpPlaceholder: t('auth.otpPlaceholder'),

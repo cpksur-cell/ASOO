@@ -254,7 +254,9 @@
     "googleBusy": "Redirecting to Google…",
     "googleFailed": "Google sign-in did not complete. Try again, or use your email.",
     "orDivider": "or",
-    "passwordPlaceholder": "Enter your password, or leave blank to receive a code"
+    "passwordPlaceholder": "Enter your password, or leave blank to receive a code",
+    "mobileInvalid": "That mobile number is not valid. Enter a Jordanian number such as 0791234567.",
+    "passwordRequired": "Enter your password to sign in with a mobile number."
   },
   "admin": {
     "portal": "Admin portal",
@@ -752,5 +754,20 @@
     "notYetBody": "The syndicate does not yet issue electronic certificates through the portal, so there is no certificate code to verify. This page will work as soon as issuing begins.",
     "reportAlt": "To verify a technical report approval issued by the syndicate, use the report verification page.",
     "reportCta": "Verify a report approval"
+  },
+  "account": {
+    "changePasswordTitle": "Change your password",
+    "changePasswordRequired": "Your account still uses its initial password. Choose one of your own to continue.",
+    "changePasswordIntro": "Choose a new password for your account.",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm password",
+    "passwordHint": "At least twelve characters. Do not reuse the initial password.",
+    "savePassword": "Save password",
+    "saving": "Saving…",
+    "passwordMismatch": "The two passwords do not match.",
+    "passwordTooShort": "That password is too short. Twelve characters minimum.",
+    "passwordSameAsOld": "That is your current password. Choose a different one.",
+    "passwordChangeFailed": "The password could not be changed. Try again.",
+    "signedOut": "Your session ended. Sign in again."
   }
 }

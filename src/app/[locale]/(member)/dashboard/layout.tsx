@@ -34,6 +34,14 @@ export default async function MemberLayout({
    */
   const session = await getUserSession()
   if (!session) redirect(href(typed, 'login'))
+
+  /*
+   * An account still on its provisioned password may go nowhere but the screen
+   * that replaces it. The real refusal is in `assertPermission` — a redirect is
+   * navigation, not a boundary — but sending the member somewhere useful beats
+   * showing them a shell where every action fails.
+   */
+  if (session.mustChangePassword) redirect(href(typed, 'change-password'))
   if (session.role !== 'member') redirect(href(typed, 'admin'))
 
   const profile = getMemberProfile(session.uid)

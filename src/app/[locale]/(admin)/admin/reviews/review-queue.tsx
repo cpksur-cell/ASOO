@@ -30,6 +30,7 @@ export interface ReviewLabels {
   order: string
   file: string
   version: string
+  dlsKey: string
   review: string
   reviewTitle: string
   approve: string
@@ -68,6 +69,7 @@ interface Item {
   memberName: string
   fileType: string
   fileName: string
+  dlsKey: string | null
   fileSize: string
   version: number
   note: string
@@ -141,6 +143,17 @@ export function ReviewQueue({
                     <span>
                       {labels.version} <span data-numeric>{item.version}</span> · {item.fileSize}
                     </span>
+                    {/* The land reference the report is about. Western digits and
+                        LTR regardless of locale: it is a reference, and a
+                        transcription error here is the expensive kind. */}
+                    {item.dlsKey && (
+                      <span>
+                        {labels.dlsKey}:{' '}
+                        <span className="text-text-secondary" dir="ltr" data-numeric>
+                          {item.dlsKey}
+                        </span>
+                      </span>
+                    )}
                   </div>
                   {item.note && (
                     <p className="mt-2 text-[length:var(--type-sm)] text-text-secondary">{item.note}</p>

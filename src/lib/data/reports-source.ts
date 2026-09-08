@@ -80,6 +80,7 @@ function mapSubmission(row: SubmissionRowWithReviews): StoredSubmission {
     orderId: row.order_id,
     submittedByUid: row.submitted_by,
     fileType: row.file_type as ReportFileType,
+    dlsKey: row.dls_key ?? null,
     fileName: row.file_name,
     fileSize: row.file_size ?? 0,
     storagePath: row.storage_path ?? '',
@@ -225,6 +226,8 @@ export async function buildSubmissionOps(input: {
   fileName: string
   fileSize: number
   note: string
+  /** Normalised land key; not unique — one parcel may carry many reports. */
+  dlsKey?: string
   storagePath?: string
   checksum?: string | null
 }): Promise<AuditedOp[]> {
@@ -260,6 +263,7 @@ export async function buildSubmissionOps(input: {
       version,
       status: 'uploaded',
       note: input.note,
+      dls_key: input.dlsKey ?? null,
     },
   })
 

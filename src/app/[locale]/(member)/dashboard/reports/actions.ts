@@ -12,6 +12,7 @@ import {
   getSubmission,
 } from '@/lib/data/reports-source'
 import { MAX_REPORT_BYTES, buildStoragePath, validateReportBytes } from '@/lib/reports-validate'
+import { isValidDlsKey, normalizeDlsKey } from '@/lib/service-requests'
 import {
   createReportDownloadUrl,
   deleteReportFile,
@@ -32,6 +33,7 @@ export type SubmitResult =
         | 'FILE_TYPE'
         | 'FILE_SIZE'
         | 'FILE_CONTENT'
+        | 'DLS_KEY'
         | 'STORAGE'
     }
 
@@ -58,7 +60,21 @@ export async function submitReportAction(formData: FormData): Promise<SubmitResu
   const note = String(formData.get('note') ?? '').slice(0, 1000)
   const file = formData.get('file')
 
+  /*
+   * The land key the report is about.
+   *
+   * Normalised with the SAME function the counter e-services use, so a key
+   * typed here and the same key typed there fold to one value — Arabic-Indic
+   * digits, stray spaces and bidi marks included. Without that, "every report
+   * against this parcel" would silently miss rows.
+   *
+   * Deliberately NOT unique: one parcel produces many reports over its life,
+   * which is what the syndicate asked for.
+   */
+  const dlsKey = normalizeDlsKey(String(formData.get('dlsKey') ?? ''))
+
   if (!orderNumber || !(file instanceof File)) return { ok: false, error: 'INVALID' }
+  if (!isValidDlsKey(dlsKey)) return { ok: false, error: 'DLS_KEY' }
   if (file.size > MAX_REPORT_BYTES) return { ok: false, error: 'FILE_SIZE' }
 
   try {
@@ -106,6 +122,7 @@ export async function submitReportAction(formData: FormData): Promise<SubmitResu
         fileName: file.name,
         fileSize: checked.bytes.length,
         note,
+        dlsKey,
         storagePath,
         checksum: checked.checksum,
       }

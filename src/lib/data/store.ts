@@ -114,6 +114,14 @@ export interface StoredSubmission {
   version: number
   status: SubmissionStatus
   note: string
+  /**
+   * The land key the report is about, normalised.
+   *
+   * NOT unique across submissions: one parcel is re-surveyed, revised and
+   * re-submitted over its life, so the same key legitimately appears on many
+   * reports. Null on rows written before the field existed.
+   */
+  dlsKey: string | null
   reviewComment: string | null
   createdAt: string
 }
@@ -330,6 +338,7 @@ export function addSubmission(input: {
   note: string
   storagePath?: string
   checksum?: string | null
+  dlsKey?: string
 }): StoredSubmission {
   const prior = store.submissions.filter((s) => s.orderId === input.orderId)
   for (const p of prior) {
@@ -342,6 +351,7 @@ export function addSubmission(input: {
     id: `sub-${Date.now()}`,
     orderId: input.orderId,
     submittedByUid: input.submittedByUid,
+    dlsKey: input.dlsKey ?? null,
     fileType: input.fileType,
     fileName: input.fileName,
     fileSize: input.fileSize,

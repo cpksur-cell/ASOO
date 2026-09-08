@@ -6,6 +6,9 @@ import { CheckCircle2, Paperclip, Plus, Upload } from 'lucide-react'
 
 import { cn } from '@/lib/cn'
 import { ACCEPT_ATTRIBUTE, MAX_REPORT_BYTES, NEW_UPLOAD_TYPES, fileTypeFromName } from '@/lib/reports'
+// Same normaliser the counter e-services use, so a key typed here and a key
+// typed there are judged identical by one rule (docs: scripts/check-dls-key.mts).
+import { isValidDlsKey, normalizeDlsKey } from '@/lib/service-requests'
 import { Modal } from '@/components/ui/modal'
 import { submitReportAction, type SubmitResult } from './actions'
 
@@ -17,6 +20,9 @@ interface UploaderLabels {
   file: string
   fileHint: string
   note: string
+  dlsKey: string
+  dlsKeyHint: string
+  dlsKeyInvalid: string
   submit: string
   submitting: string
   cancel: string
@@ -42,6 +48,7 @@ export function ReportUploader({
   const [note, setNote] = useState('')
   const [fileName, setFileName] = useState('')
   const [clientError, setClientError] = useState<string | null>(null)
+  const [dlsKey, setDlsKey] = useState('')
   const [banner, setBanner] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null)
   const [pending, startTransition] = useTransition()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -76,6 +83,7 @@ export function ReportUploader({
       FILE_SIZE: labels.fileTooBig,
       // The extension said one thing and the bytes said another.
       FILE_CONTENT: labels.fileContentMismatch,
+      DLS_KEY: labels.dlsKeyInvalid,
       STORAGE: labels.uploadFailed,
       UNAUTHORIZED: labels.noPermission,
       UNAUTHENTICATED: labels.noPermission,
@@ -89,12 +97,19 @@ export function ReportUploader({
       setClientError(labels.fileTypeNotAllowed)
       return
     }
+    // Courtesy check only. The server normalises and re-validates the key —
+    // this just saves a round trip and an upload of the bytes.
+    if (!isValidDlsKey(normalizeDlsKey(dlsKey))) {
+      setClientError(labels.dlsKeyInvalid)
+      return
+    }
     startTransition(async () => {
       // The actual bytes travel in a FormData — the server stores the file and
       // checksums it, so sending only a name and a size would be theatre.
       const body = new FormData()
       body.set('orderNumber', orderNumber)
       body.set('note', note)
+      body.set('dlsKey', dlsKey)
       body.set('file', picked)
 
       const result = await submitReportAction(body)
@@ -102,6 +117,7 @@ export function ReportUploader({
       setBanner({ tone: 'ok', text: labels.uploaded })
       setOpen(false)
       setNote('')
+      setDlsKey('')
       setFileName('')
       if (inputRef.current) inputRef.current.value = ''
       router.refresh()
@@ -201,6 +217,31 @@ export function ReportUploader({
                     {clientError}
                   </p>
                 )}
+              </div>
+
+              <div>
+                <label
+                  htmlFor="report-dls-key"
+                  className="block text-[length:var(--type-xs)] font-medium text-text-secondary"
+                >
+                  {labels.dlsKey}
+                </label>
+                <input
+                  id="report-dls-key"
+                  type="text"
+                  inputMode="text"
+                  required
+                  value={dlsKey}
+                  onChange={(e) => setDlsKey(e.target.value)}
+                  aria-describedby="report-dls-key-hint"
+                  className="mt-1.5 w-full rounded-lg border border-border-default bg-surface-default px-3 py-2 text-[length:var(--type-sm)] text-text-primary"
+                />
+                <p
+                  id="report-dls-key-hint"
+                  className="mt-1 text-[length:var(--type-xs)] text-text-muted"
+                >
+                  {labels.dlsKeyHint}
+                </p>
               </div>
 
               <div>

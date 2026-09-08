@@ -35,6 +35,8 @@ export interface SubmissionRow {
   file_size: number | null
   mime_type: string | null
   checksum: string | null
+  /** Land key the report relates to. Not unique — many reports per parcel. */
+  dls_key: string | null
   version: number
   status:
     | 'uploaded'

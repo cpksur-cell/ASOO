@@ -190,11 +190,12 @@ npm run dev              # Next.js dev server
 npm run build            # production build
 npm run typecheck
 npm run lint
-npm run verify           # tokens + contrast + i18n + schema + dls-key + typecheck + lint
+npm run verify           # tokens + contrast + i18n + schema + permissions + dls-key + typecheck + lint
 npm run tokens:build     # design/tokens.json -> CSS variables + Tailwind theme
 npm run audit:i18n       # fails on a hardcoded Arabic string in a component
 npm run audit:tokens     # fails on an undefined semantic token
 npm run audit:schema     # structural check of the schema
+npm run audit:permissions # fails when the DB permission seed and the code matrix disagree
 ```
 
 Scripts, not npm targets:
@@ -202,6 +203,7 @@ Scripts, not npm targets:
 ```bash
 node scripts/import-members.mjs "<roster.xlsx>" [--dry-run]   # bulk member import
 node scripts/seed-cms.mjs [--dry-run]                          # seed CMS content into Postgres
+node scripts/permissions-seed.mjs --write                      # regenerate 0016 from the code matrix
 ```
 
 **`npm run verify` is the gate.** Run it before calling anything done; it is

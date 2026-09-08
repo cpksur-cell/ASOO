@@ -72,7 +72,7 @@ Find all three values in the Supabase dashboard under
 2. **Apply the schema.** Two options:
 
    **A. Supabase SQL Editor (no tooling):** open each file in `supabase/migrations/`
-   in ascending order (`0001` → `0015`) and run it, then run `supabase/seed.sql`.
+   in ascending order (`0001` → `0016`) and run it, then run `supabase/seed.sql`.
 
    **B. Supabase CLI (recommended, repeatable):**
    ```bash
@@ -135,6 +135,7 @@ file is never edited. The CLI is not linked yet (no `supabase/config.toml`), so
 | `0013_cms_content.sql` | Closes two gaps that kept the CMS off the public site: `posts.featured_image_url` (the uuid FK cannot hold a repository path) and the `badge_text` / `secondary_cta_label` / `view_all_label` columns the hero block actually uses, plus indexes for the homepage and news read paths |
 | `0014_atomic_audit.sql` | `audited_write(p_audit, p_ops)` — applies an ordered list of writes AND the audit row in one transaction, closing the gap where a mutation could commit and its record fail. Tables are allowlisted, every column is checked against the catalog, and values are bound through `jsonb_populate_record` rather than interpolated |
 | `0015_reorder_block.sql` | `audited_reorder_block()` plus a `reorder_block` op kind on `audited_write`. A reorder used to be decided in application memory from a read taken outside the transaction; now the caller says only "move this block up" and the database picks the neighbour under a `for update` lock on the parent `layouts` row, so two editors reordering the same layout cannot interleave |
+| `0016_permissions_seed.sql` | Seeds `permissions` (48) and `role_permissions` (68) from the matrix in `src/lib/auth/roles.ts`. Both tables were created in 0002 and left empty, which made `role_permissions` a trap — the first place anyone looks to change who may do what, and editing it changed nothing. GENERATED: run `node scripts/permissions-seed.mjs --write` after changing the matrix; `npm run verify` fails if the two drift. Still reference data, not the enforcement point |
 | `seed.sql` | roles, 12 governorates, categories, demo user/member, demo orders/submissions/approval — mirrors the in-memory demo |
 
 ### Storage

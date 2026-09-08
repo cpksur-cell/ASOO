@@ -28,83 +28,13 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import zlib from 'node:zlib'
 
 import { createClient } from '@supabase/supabase-js'
 // @next/env is CommonJS, so it has no named exports under ESM.
 import nextEnv from '@next/env'
 
 import { normalizeArabic, transliterateName } from './lib/translit.mjs'
-
-/* ------------------------------------------------------------ xlsx reader */
-
-/** Reads a zip container without pulling in a dependency. */
-function readZip(buf) {
-  const files = {}
-  let end = buf.length - 22
-  while (end >= 0 && buf.readUInt32LE(end) !== 0x06054b50) end--
-  if (end < 0) throw new Error('Not a valid .xlsx (no zip end-of-central-directory)')
-
-  const count = buf.readUInt16LE(end + 10)
-  let off = buf.readUInt32LE(end + 16)
-
-  for (let i = 0; i < count; i++) {
-    if (buf.readUInt32LE(off) !== 0x02014b50) break
-    const nameLen = buf.readUInt16LE(off + 28)
-    const extraLen = buf.readUInt16LE(off + 30)
-    const commentLen = buf.readUInt16LE(off + 32)
-    const localOff = buf.readUInt32LE(off + 42)
-    const compSize = buf.readUInt32LE(off + 20)
-    const name = buf.slice(off + 46, off + 46 + nameLen).toString('utf8')
-
-    const lNameLen = buf.readUInt16LE(localOff + 26)
-    const lExtraLen = buf.readUInt16LE(localOff + 28)
-    const method = buf.readUInt16LE(localOff + 8)
-    const start = localOff + 30 + lNameLen + lExtraLen
-    const raw = buf.slice(start, start + compSize)
-
-    files[name] = method === 0 ? raw : zlib.inflateRawSync(raw)
-    off += 46 + nameLen + extraLen + commentLen
-  }
-  return files
-}
-
-const unescapeXml = (s) =>
-  s
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&')
-
-function readSheetRows(zip) {
-  const shared = []
-  const ssXml = zip['xl/sharedStrings.xml']?.toString('utf8') ?? ''
-  for (const si of ssXml.matchAll(/<si>([\s\S]*?)<\/si>/g)) {
-    let text = ''
-    for (const t of si[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)) text += t[1]
-    shared.push(unescapeXml(text))
-  }
-
-  const sheetXml = zip['xl/worksheets/sheet1.xml'].toString('utf8')
-  const rows = []
-  for (const row of sheetXml.matchAll(/<row[^>]*r="(\d+)"[^>]*>([\s\S]*?)<\/row>/g)) {
-    const cells = {}
-    for (const c of row[2].matchAll(
-      /<c r="([A-Z]+)\d+"(?:[^>]*t="([^"]*)")?[^>]*>([\s\S]*?)<\/c>/g,
-    )) {
-      const col = c[1]
-      const type = c[2]
-      const inline = c[3].match(/<t[^>]*>([\s\S]*?)<\/t>/)
-      const value = c[3].match(/<v>([\s\S]*?)<\/v>/)
-      let out = inline ? inline[1] : value ? value[1] : ''
-      if (type === 's') out = shared[Number(out)] ?? ''
-      cells[col] = unescapeXml(String(out)).trim()
-    }
-    rows.push({ row: Number(row[1]), cells })
-  }
-  return rows
-}
+import { readZip, readSheetRows } from './lib/xlsx.mjs'
 
 /* ----------------------------------------------------------------- import */
 

@@ -1,13 +1,24 @@
 /**
- * The permission matrix.
+ * The permission matrix — the intended BASELINE, not the runtime authority.
  *
  * Derived from the specification table in docs/08-security.md §4. That table
  * is the spec; this file is the implementation, and they are checked against
  * each other. Adding a permission here without adding the row there is a
  * defect — the document is what the syndicate signs off on.
  *
- * Shared by middleware (edge), server components, and server actions, so there
- * is exactly one definition of who may do what.
+ * WHAT ACTUALLY DECIDES. `can()` and `assertPermission()` read
+ * `role_permissions` from the database (migration 0016), which this file seeds
+ * and `npm run verify` keeps in step. When Supabase is configured, the rows
+ * decide; this map is consulted only when there is no database at all. So a
+ * grant added directly to the database takes effect without a deploy, and the
+ * repository will not show it — `node scripts/permissions-seed.mjs --write`
+ * plus a re-applied 0016 is how a change gets written down.
+ *
+ * An earlier version of this comment said the matrix was shared with edge
+ * middleware. It never was: middleware only asks whether a session plausibly
+ * exists, never what it may do, and this module is imported solely by
+ * `server.ts`. That mistaken claim was the stated reason the tables could not
+ * be made authoritative.
  */
 
 export const ROLES = [

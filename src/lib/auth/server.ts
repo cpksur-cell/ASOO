@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { cache } from 'react'
+
 import { cookies } from 'next/headers'
 
 import type { Locale } from '@/i18n/config'
@@ -141,6 +143,67 @@ export async function isStaff(): Promise<boolean> {
 }
 
 /**
+ * What a role may do, read from the DATABASE.
+ *
+ * `role_permissions` is the authority (migration 0016). `PERMISSIONS` in
+ * ./roles.ts is the seed those rows are generated from and the fallback when
+ * there is no database at all — it is no longer consulted when one exists.
+ *
+ * MEMOISED PER REQUEST. A single page render asks `can()` many times to decide
+ * what to draw; without this each question would be its own round trip. React's
+ * `cache` scopes the answer to one request, so permissions cannot change
+ * halfway through rendering a page and every check on that page agrees.
+ *
+ * FAILS CLOSED. A lookup that errors returns no grants, so every check denies.
+ * The alternative — falling back to the code matrix when the database is
+ * unreachable — would mean the system grants different things when it is
+ * unhealthy than when it is well, and would hand anyone who can induce a
+ * database error whichever of the two is more permissive. An outage locking
+ * admins out is the safer failure, and it is loud.
+ */
+const grantsForRole = cache(async (role: Role): Promise<ReadonlySet<string>> => {
+  if (!isSupabaseConfigured()) {
+    // Demo mode: there is no database to be authoritative. This is the same
+    // fallback the data layer makes, not a bypass — with Supabase configured
+    // this branch is unreachable.
+    return new Set(PERMISSIONS[role] ?? [])
+  }
+
+  const { data, error } = await getServiceClient()
+    .from('roles')
+    .select('code, role_permissions(permissions(code))')
+    .eq('code', role)
+    .maybeSingle()
+
+  if (error || !data) {
+    console.error(
+      `[auth] permission lookup failed for role "${role}" — denying everything`,
+      error?.message ?? 'role not found',
+    )
+    return new Set()
+  }
+
+  const rows = (data as { role_permissions?: unknown }).role_permissions
+  const codes = (Array.isArray(rows) ? rows : []).flatMap((row) => {
+    const rel = (row as { permissions?: { code?: string } | Array<{ code?: string }> }).permissions
+    return Array.isArray(rel) ? rel.map((p) => p?.code) : [rel?.code]
+  })
+
+  return new Set(codes.filter((c): c is string => typeof c === 'string'))
+})
+
+/**
+ * Does this set of grants cover `resource:action`?
+ *
+ * Three ways to match, and the two wildcards are why this is not a plain
+ * `has()`: `*:*` is the super-admin grant, and `resource:*` lets a role be
+ * given a whole resource without enumerating its verbs.
+ */
+function isGranted(granted: ReadonlySet<string>, resource: string, action: string): boolean {
+  return granted.has('*:*') || granted.has(`${resource}:*`) || granted.has(`${resource}:${action}`)
+}
+
+/**
  * Non-throwing permission check, for deciding what to RENDER.
  *
  * Use this to hide a nav item or a button. Never use it as the access control
@@ -150,12 +213,7 @@ export async function isStaff(): Promise<boolean> {
 export async function can(resource: string, action: string): Promise<boolean> {
   const session = await getUserSession()
   if (!session) return false
-  const granted = PERMISSIONS[session.role] ?? []
-  return (
-    granted.includes('*:*') ||
-    granted.includes(`${resource}:*`) ||
-    granted.includes(`${resource}:${action}`)
-  )
+  return isGranted(await grantsForRole(session.role), resource, action)
 }
 
 export class AuthError extends Error {
@@ -168,19 +226,20 @@ export class AuthError extends Error {
 /**
  * Throw unless the session may perform `resource:action`.
  *
- * The matrix lives in ./roles.ts, generated from the specification table in
- * docs/08-security.md §4 — that document is the spec this is checked against.
+ * Reads `role_permissions` (migration 0016), seeded from ./roles.ts, which is
+ * itself generated from the specification table in docs/08-security.md §4 —
+ * that document is the spec this is checked against.
+ *
+ * A failed lookup denies: see `grantsForRole`. That means a database outage
+ * refuses admin work rather than guessing at it, which is the correct
+ * direction for an authorization decision.
  */
 export async function assertPermission(resource: string, action: string): Promise<UserSession> {
   const session = await getUserSession()
   if (!session) throw new AuthError('UNAUTHENTICATED')
 
-  const granted = PERMISSIONS[session.role] ?? []
-  const allowed =
-    granted.includes('*:*') ||
-    granted.includes(`${resource}:*`) ||
-    granted.includes(`${resource}:${action}`)
-
-  if (!allowed) throw new AuthError('UNAUTHORIZED')
+  if (!isGranted(await grantsForRole(session.role), resource, action)) {
+    throw new AuthError('UNAUTHORIZED')
+  }
   return session
 }

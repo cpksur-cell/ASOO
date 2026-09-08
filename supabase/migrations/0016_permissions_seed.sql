@@ -12,10 +12,14 @@
 -- `role_permissions` is a trap: it is the first place someone looks to change
 -- who may do what, and editing it would have changed nothing at all.
 --
--- These rows are REFERENCE DATA, not the enforcement point. `can()` and
--- `assertPermission()` read the code matrix, which is shared with the edge
--- middleware where a database round trip is not available. Making these tables
--- authoritative is a real change, not a configuration one.
+-- THESE ROWS ARE THE ENFORCEMENT POINT. `can()` and `assertPermission()` read
+-- `role_permissions` per request (memoised), so editing a row here changes what
+-- the application permits, with no deploy. The matrix in code is the seed and
+-- the no-database fallback, not the authority.
+--
+-- Consequence worth stating plainly: a privilege change is now a data edit
+-- rather than a reviewed commit, and nothing audits a hand-written UPDATE to
+-- these tables. Change them through this migration wherever possible.
 --
 -- `description` is left NULL rather than filled with invented prose. The
 -- syndicate's signed-off wording lives in docs/08-security.md §4; duplicating

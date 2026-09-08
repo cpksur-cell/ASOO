@@ -4,7 +4,6 @@ import { Mail, MapPin, Phone } from 'lucide-react'
 import { getDictionary, createTranslator, type Locale } from '@/i18n/config'
 import { href, footerNav } from '@/lib/routes'
 import { contact } from '@/lib/site'
-import { getRepository } from '@/lib/data'
 import { StationMark } from '@/components/ui/station-mark'
 
 const columnLabels: Record<keyof typeof footerNav, string> = {
@@ -114,7 +113,6 @@ function TopographicDivider() {
 
 export async function SiteFooter({ locale }: { locale: Locale }) {
   const t = createTranslator(getDictionary(locale))
-  const governorates = await getRepository().listGovernorates(locale)
 
   return (
     <footer className="relative mt-20 overflow-hidden bg-surface-inverse text-primary-100">
@@ -161,26 +159,6 @@ export async function SiteFooter({ locale }: { locale: Locale }) {
             ))}
           </div>
         </div>
-
-        {/* Governorates as one dense traverse of links. */}
-        <nav aria-label={t('footer.governorates')} className="mt-10 border-t border-primary-700/80 pt-6">
-          <ul className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[length:var(--type-xs)]">
-            <li className="me-1 font-semibold uppercase tracking-wide text-accent-300">
-              {t('footer.governorates')}
-            </li>
-            {governorates.map((g, i) => (
-              <li key={g.id} className="flex items-center gap-1.5">
-                {i > 0 && <span className="text-primary-600" aria-hidden>·</span>}
-                <Link
-                  href={href(locale, `directory/governorate/${g.code}`)}
-                  className="rounded px-1.5 py-0.5 text-primary-200 transition-colors hover:text-text-on-inverse"
-                >
-                  {g.name}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
 
         <div className="mt-8 flex flex-col gap-4 border-t border-primary-700/80 pt-6 text-[length:var(--type-xs)] text-primary-300 md:flex-row md:items-center md:justify-between">
           <p>{t('footer.rights', { year: new Date().getFullYear() })}</p>
